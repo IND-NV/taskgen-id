@@ -16,18 +16,22 @@ use serde::{Deserialize, Serialize};
 
 const GEMINI_API_BASE: &str = "https://generativelanguage.googleapis.com/v1beta";
 
-const DEFAULT_SYSTEM_PROMPT: &str = r#"Tulislah tugas atau pertanyaan seolah-olah ditanyakan orang biasa di forum atau Stack Overflow. Orang tersebut mungkin lelah atau frustrasi, tetapi tetap kompeten. Sampaikan masalah secara langsung tanpa penjelasan berlebihan. Jangan kekanak-kanakan dan jangan terdengar seperti robot. Gunakan gaya manusia yang santai dan tidak terlalu formal.
-Contoh gaya santai yang baik: "bagaimana cara membalik matriks di NumPy?", "algoritma quicksort saya mengalami kesalahan off-by-one, ini kodenya", "mengapa fetch async saya mengembalikan undefined?"
-Hindari gaya yang kasar, tidak jelas, atau dibuat-buat.
-PENTING: tingkat kesulitan memengaruhi cara bertanya sekaligus kompleksitas masalah:
+const DEFAULT_SYSTEM_PROMPT: &str = r#"Tulislah tugas atau pertanyaan yang relevan dengan domain dan subdomain yang diberikan, dengan bahasa Indonesia yang alami, jelas, dan sesuai konteks.
+
+### Natural Language and Tone
+Sesuaikan nada, tingkat formalitas, pilihan kata, dan struktur kalimat dengan konteks, topik, audiens, dan tujuan pertanyaan. Gunakan penilaian sendiri agar pertanyaan terdengar seperti benar-benar ditulis seseorang dalam situasi tersebut. Jaga keseimbangan antara kesopanan, kejelasan, dan kewajaran percakapan. Hindari bahasa yang terlalu kaku, slang berlebihan, pola kalimat berulang, atau gaya yang dipaksakan. Jangan mewajibkan gaya santai untuk semua domain; gunakan gaya yang cocok dengan konteksnya.
+
+### Tingkat Kesulitan
+Tingkat kesulitan memengaruhi kompleksitas masalah sekaligus cara pertanyaan dirumuskan:
 - Tingkat 1–3: pertanyaan dasar, kebingungan yang wajar, kalimat sederhana, dan masalah dengan jawaban yang jelas.
-- Tingkat 4–5: masalah teknis nyata dari orang yang cukup kompeten. Nyatakan masalah secara langsung; mungkin ada ambiguitas atau beberapa pendekatan. Sebutkan hal yang sudah dicoba jika relevan.
-- Tingkat 6–7: pertanyaan tingkat ahli dengan istilah teknis yang digunakan secara alami. Masalah memiliki ketegangan, trade-off, atau pilihan desain yang nyata. Jelaskan kompleksitasnya dengan bahasa santai tetapi lengkap.
-- Tingkat 8–10: masalah sangat maju yang memiliki beberapa cara pandang, hasil yang tidak pasti, atau membutuhkan sintesis lintas bidang. Jelaskan apa yang sulit, apa yang belum pasti, dan hal yang perlu diseimbangkan. Anggap pembaca sebagai ahli sejawat.
-Tulislah seperti seseorang mengirim pesan kepada teman yang memahami bidang tersebut. Gunakan tanda baca yang wajar. Inti tugas harus benar secara teknis.
-Untuk tingkat 6 ke atas, sertakan konflik batasan, trade-off desain, atau pertanyaan terbuka yang benar-benar relevan. Jangan membuat kompleksitas palsu.
-Hindari pengantar klise. Jangan menyertakan perintah, blok kode, atau versi perangkat lunak kecuali memang wajar untuk ditempelkan oleh penanya. Pertahankan tugas tetap ringkas tanpa menghilangkan kompleksitas yang penting.
-SEMUA TUGAS WAJIB DITULIS DALAM BAHASA INDONESIA. Istilah teknis, nama bahasa pemrograman, pustaka, API, dan nama produk boleh tetap menggunakan nama aslinya bila diperlukan untuk ketepatan.
+- Tingkat 4–5: masalah nyata dengan beberapa pendekatan atau sedikit ambiguitas. Sebutkan hal yang sudah dicoba jika relevan.
+- Tingkat 6–7: masalah mahir dengan istilah teknis yang digunakan secara alami serta trade-off atau pilihan desain yang nyata.
+- Tingkat 8–10: masalah sangat maju yang dapat melibatkan beberapa perspektif, hasil tidak pasti, atau sintesis lintas bidang. Jelaskan batasan dan ketidakpastian yang relevan tanpa membuat kompleksitas palsu.
+
+Pertahankan makna, relevansi domain, subdomain, dan tingkat kesulitan. Gunakan tanda baca yang wajar. Hindari pengantar klise. Jangan menyertakan perintah, blok kode, atau versi perangkat lunak kecuali memang wajar untuk ditempelkan oleh penanya. Buat pertanyaan seringkas mungkin tanpa menghilangkan detail penting.
+
+Semua tugas wajib menggunakan bahasa Indonesia (kode bahasa: id). Istilah teknis, nama bahasa pemrograman, pustaka, API, dan produk boleh tetap menggunakan nama aslinya bila diperlukan untuk ketepatan.
+
 Keluarkan hanya teks tugas itu sendiri. Jangan menambahkan jawaban, penjelasan proses, judul tambahan, atau komentar di luar tugas."#;
 
 
