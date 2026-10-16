@@ -521,6 +521,137 @@ async fn api_request(
 
 const MAX_RETRIES: u32 = 5;
 
+fn clean_markdown(text: &str) -> String {
+    let mut cleaned = text.trim().to_string();
+    if cleaned.starts_with(char::from(96)) {
+        if let Some(newline) = cleaned.find('\n') {
+            cleaned = cleaned[newline + 1..].to_string();
+        }
+    }
+    while cleaned.ends_with(char::from(96)) {
+        cleaned.pop();
+    }
+
+    let mut lines = Vec::new();
+    for line in cleaned.lines() {
+        let mut line = line.trim().to_string();
+        while line.starts_with('#') { line.remove(0); }
+        line = line.trim_start().to_string();
+        if line.starts_with("- ") || line.starts_with("* ") || line.starts_with("+ ") {
+            line = line[2..].trim_start().to_string();
+        } else {
+            let prefix_len = line.chars().take_while(|c| c.is_ascii_digit()).count();
+            if prefix_len > 0 {
+                let rest = &line[prefix_len..];
+                if rest.starts_with(". ") || rest.starts_with(") ") {
+                    line = rest[2..].trim_start().to_string();
+                }
+            }
+        }
+        line = line.replace("**", "").replace("__", "").replace(char::from(96), "");
+        if !line.is_empty() { lines.push(line); }
+    }
+    lines.join("\n").trim().to_string()
+}
+
+async fn generate_batch(
+    client: &reqwest::Client,
+    api_key: &str,
+    model: &str,
+    system_prompt: &str,
+    tasks: &[(String, String, String, u8, Option<String>)],
+    temperature: f64,
+    cancel: &AtomicBool,
+    consecutive_timeouts: &AtomicUsize,
+    pb: &ProgressBar,
+) -> std::result::Result<(Vec<String>, u64, u64), ApiError> {
+    let mut task_descriptions = String::new();
+    for (idx, (category, domain_name, subdomain, difficulty, _language)) in tasks.iter().enumerate() {
+        let topic_display = format!("{}::{}", category_label(category), domain_label(domain_name));
+        task_descriptions.push_str(&format!(
+            "{}. Topik: {}; subtopik: {}; tingkat kesulitan: {}/10 ({}). Buat pertanyaan spesifik yang berfokus pada subtopik ini.\n",
+            idx + 1, topic_display, humanize_subdomain(subdomain), difficulty, difficulty_label(*difficulty)
+        ));
+    }
+
+    let user_msg = format!(
+        "Buat tepat {} pertanyaan/tugas berbeda sesuai daftar berikut. Semua harus berbahasa Indonesia.\n\n{}\nKeluarkan hanya JSON valid berupa array yang berisi tepat {} string, dengan urutan yang sama. Setiap string hanya teks pertanyaan, tanpa jawaban, komentar, Markdown, bullet, nomor daftar, heading, atau code fence.",
+        tasks.len(), task_descriptions, tasks.len()
+    );
+    let body = ChatRequest {
+        model: model.to_string(),
+        messages: vec![
+            ChatMessage {
+                role: "system".into(),
+                content: format!("{}\n\nInstruksi wajib: teks pertanyaan harus polos tanpa Markdown. Ikuti jumlah dan urutan yang diminta.", system_prompt),
+            },
+            ChatMessage { role: "user".into(), content: user_msg },
+        ],
+        temperature,
+        max_tokens: Some(8192),
+    };
+    let url = format!("{}/models/{}:generateContent", GEMINI_API_BASE, model);
+    let mut retries = 0u32;
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(ApiError::Other(anyhow::anyhow!("cancelled")));
+        }
+        match api_request(client, &url, api_key, &body).await {
+            Ok((response_text, input_tokens, output_tokens)) => {
+                consecutive_timeouts.store(0, Ordering::Relaxed);
+                let parsed_text = response_text.trim();
+                let json_text = if parsed_text.starts_with(char::from(96)) {
+                    parsed_text.find('\n')
+                        .map(|newline| &parsed_text[newline + 1..])
+                        .unwrap_or(parsed_text)
+                        .trim_end_matches(char::from(96)).trim()
+                } else { parsed_text };
+                let value: serde_json::Value = serde_json::from_str(json_text)
+                    .map_err(|e| ApiError::Other(anyhow::anyhow!("invalid JSON batch: {}", e)))?;
+                let array = value.as_array()
+                    .ok_or_else(|| ApiError::Other(anyhow::anyhow!("batch response must be a JSON array")))?;
+                let prompts: Vec<String> = array.iter()
+                    .filter_map(|item| item.as_str())
+                    .map(clean_markdown)
+                    .collect();
+                if prompts.len() != tasks.len() {
+                    return Err(ApiError::Other(anyhow::anyhow!(
+                        "model returned {} prompts for batch size {}; expected exactly {}",
+                        prompts.len(), tasks.len(), tasks.len()
+                    )));
+                }
+                return Ok((prompts, input_tokens, output_tokens));
+            }
+            Err(ApiError::RateLimit(retry_after)) => {
+                retries += 1;
+                if retries > MAX_RETRIES { return Err(ApiError::RateLimit(retry_after)); }
+                let wait = retry_after.unwrap_or_else(|| 2u64.pow(retries).min(60));
+                pb.suspend(|| eprintln!("[RATE] 429 hit, waiting {}s (retry {}/{})", wait, retries, MAX_RETRIES));
+                tokio::time::sleep(tokio::time::Duration::from_secs(wait)).await;
+            }
+            Err(ApiError::Timeout) => {
+                let count = consecutive_timeouts.fetch_add(1, Ordering::Relaxed) + 1;
+                if count >= 5 {
+                    pb.suspend(|| eprintln!("[FATAL] {} consecutive timeouts, shutting down gracefully...", count));
+                    cancel.store(true, Ordering::Relaxed);
+                    return Err(ApiError::Timeout);
+                }
+                retries += 1;
+                if retries > MAX_RETRIES { return Err(ApiError::Timeout); }
+                let wait = 2u64.pow(retries).min(30);
+                pb.suspend(|| eprintln!("[TIMEOUT] request timed out, waiting {}s (retry {}/{}, {} consecutive)", wait, retries, MAX_RETRIES, count));
+                tokio::time::sleep(tokio::time::Duration::from_secs(wait)).await;
+            }
+            Err(ApiError::Billing(msg)) => {
+                pb.suspend(|| eprintln!("[FATAL] billing error, shutting down gracefully: {}", msg));
+                cancel.store(true, Ordering::Relaxed);
+                return Err(ApiError::Billing(msg));
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
+
 async fn generate_task(
     client: &reqwest::Client,
     api_key: &str,
