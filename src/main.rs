@@ -30,9 +30,6 @@ Hindari pengantar klise. Jangan menyertakan perintah, blok kode, atau versi pera
 SEMUA TUGAS WAJIB DITULIS DALAM BAHASA INDONESIA. Istilah teknis, nama bahasa pemrograman, pustaka, API, dan nama produk boleh tetap menggunakan nama aslinya bila diperlukan untuk ketepatan.
 Keluarkan hanya teks tugas itu sendiri. Jangan menambahkan jawaban, penjelasan proses, judul tambahan, atau komentar di luar tugas."#;
 
-const DONATION_BTC: &str = "bc1qx6zepu6sfkvshgdmc4ewu6pk6rpadvpgffpp7v";
-const DONATION_LTC: &str = "ltc1qv2mefzps2vtjcpwfx8xxdrpplrcvltswm68r7x";
-const DONATION_XMR: &str = "42Dbm5xg5Nq26fdyzfEU7KBnAJfhi7Cvz5J2ex5CzHXkfKuNEJzYCcmJ1GTbgjFZ5MBx72sdG1G9239Cd6rsZfv4QeDkYJY";
 
 #[derive(Debug, Clone)]
 struct DomainDef {
@@ -749,11 +746,6 @@ fn generate_readme(
     md.push_str("}\n");
     md.push_str("```\n\n");
 
-    md.push_str("## Dukungan / Donasi\n\n");
-    md.push_str("Jika alat ini bermanfaat, kamu dapat mendukung proyek ini:\n\n");
-    md.push_str(&format!("- **BTC**: `{}`\n", DONATION_BTC));
-    md.push_str(&format!("- **LTC**: `{}`\n", DONATION_LTC));
-    md.push_str(&format!("- **XMR**: `{}`\n\n", DONATION_XMR));
 
     md.push_str("---\n\n");
     md.push_str("*Dibuat menggunakan [taskgen](https://github.com/empero-org/taskgen) oleh empero-org*\n");
