@@ -543,7 +543,7 @@ async fn generate_task(
     let user_msg = format!(
         "Buat satu tugas/pertanyaan berdasarkan ketentuan berikut:\n\nTopik: {}\nSubtopik: {}\nTingkat kesulitan: {}/10 ({})\n\nTugas harus secara langsung dan spesifik membahas subtopik \"{}\" dalam bidang {}. Jangan membuat tugas {} yang terlalu umum; isi tugas harus benar-benar berfokus pada subtopik tersebut.\n\nKeluarkan hanya teks tugas, tanpa jawaban atau komentar tambahan.{}",
         topic_display, subdomain_display, difficulty, difficulty_label(difficulty),
-        subdomain_display, topic_display, topic_display, subdomain_display,
+        subdomain_display, topic_display, topic_display,
         lang_instruction
     );
 
