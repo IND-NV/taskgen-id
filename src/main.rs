@@ -191,7 +191,7 @@ struct Args {
     #[arg(long)]
     difficulty: Option<String>,
 
-    #[arg(short, long, default_value_t = 0.9)]
+    #[arg(short, long, default_value_t = 1.0)]
     temperature: f64,
 
     #[arg(short, long, default_value_t = 5)]
@@ -238,8 +238,7 @@ struct TaskEntry {
     difficulty: u8,
     #[serde(skip_serializing_if = "Option::is_none")]
     language: Option<String>,
-    taskgen_model: String,
-    temperature: f64,
+    model: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -745,8 +744,7 @@ fn generate_readme(
     md.push_str("  \"subdomain\": \"polynomials\",\n");
     md.push_str("  \"difficulty\": 5,\n");
     md.push_str("  \"language\": \"id\",\n");
-    md.push_str(&format!("  \"taskgen_model\": \"{}\",\n", args.model));
-    md.push_str("  \"temperature\": 0.9\n");
+    md.push_str(&format!("  \"model\": \"{}\"\n", args.model));
     md.push_str("}\n");
     md.push_str("```\n\n");
 
@@ -914,8 +912,7 @@ async fn main() -> Result<()> {
                                 subdomain: subdomain.clone(),
                                 difficulty,
                                 language: Some("id".to_string()),
-                                taskgen_model: model.clone(),
-                                temperature,
+                                model: model.clone(),
                             };
                             let line = serde_json::to_string(&entry).unwrap() + "\n";
                             let mut f = file.lock().unwrap();
