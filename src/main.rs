@@ -548,7 +548,7 @@ fn clean_markdown(text: &str) -> String {
                 }
             }
         }
-        line = line.replace("**", "").replace("__", "").replace(char::from(96), "");
+        line = line.replace("**", "").replace(char::from(96), "");
         if !line.is_empty() { lines.push(line); }
     }
     lines.join("\n").trim().to_string()
@@ -652,97 +652,6 @@ async fn generate_batch(
     }
 }
 
-async fn generate_task(
-    client: &reqwest::Client,
-    api_key: &str,
-    model: &str,
-    system_prompt: &str,
-    _category: &str,
-    domain_display: &str,
-    subdomain: &str,
-    difficulty: u8,
-    temperature: f64,
-    language: Option<&str>,
-    cancel: &AtomicBool,
-    consecutive_timeouts: &AtomicUsize,
-    pb: &ProgressBar,
-) -> std::result::Result<(String, u64, u64), ApiError> {
-    let _ = language; // Retained internally for compatibility; all output is Indonesian.
-    let lang_instruction = "\n\nPENTING: Tulis seluruh tugas dalam bahasa Indonesia. Jangan menghasilkan versi bahasa Inggris atau bahasa lain.";
-
-    let topic_display = format!("{}::{}", category_label(_category), domain_label(domain_display.split("::").last().unwrap_or(domain_display)));
-    let subdomain_display = humanize_subdomain(subdomain);
-    let user_msg = format!(
-        "Buat satu tugas/pertanyaan berdasarkan ketentuan berikut:\n\nTopik: {}\nSubtopik: {}\nTingkat kesulitan: {}/10 ({})\n\nTugas harus secara langsung dan spesifik membahas subtopik \"{}\" dalam bidang {}. Jangan membuat tugas {} yang terlalu umum; isi tugas harus benar-benar berfokus pada subtopik tersebut.\n\nKeluarkan hanya teks tugas, tanpa jawaban atau komentar tambahan.{}",
-        topic_display, subdomain_display, difficulty, difficulty_label(difficulty),
-        subdomain_display, topic_display, topic_display,
-        lang_instruction
-    );
-
-    let body = ChatRequest {
-        model: model.to_string(),
-        messages: vec![
-            ChatMessage { role: "system".into(), content: system_prompt.into() },
-            ChatMessage { role: "user".into(), content: user_msg },
-        ],
-        temperature,
-        max_tokens: Some(2048),
-    };
-
-    let url = format!("{}/models/{}:generateContent", GEMINI_API_BASE, model);
-
-    let mut retries = 0u32;
-    loop {
-        if cancel.load(Ordering::Relaxed) {
-            return Err(ApiError::Other(anyhow::anyhow!("cancelled")));
-        }
-
-        match api_request(client, &url, api_key, &body).await {
-            Ok(result) => {
-                consecutive_timeouts.store(0, Ordering::Relaxed);
-                return Ok(result);
-            }
-            Err(ApiError::RateLimit(retry_after)) => {
-                retries += 1;
-                if retries > MAX_RETRIES {
-                    return Err(ApiError::RateLimit(retry_after));
-                }
-                let wait = retry_after.unwrap_or_else(|| 2u64.pow(retries).min(60));
-                pb.suspend(|| {
-                    eprintln!("[RATE] 429 hit, waiting {}s (retry {}/{})", wait, retries, MAX_RETRIES);
-                });
-                tokio::time::sleep(tokio::time::Duration::from_secs(wait)).await;
-            }
-            Err(ApiError::Timeout) => {
-                let count = consecutive_timeouts.fetch_add(1, Ordering::Relaxed) + 1;
-                if count >= 5 {
-                    pb.suspend(|| {
-                        eprintln!("[FATAL] {} consecutive timeouts, shutting down gracefully...", count);
-                    });
-                    cancel.store(true, Ordering::Relaxed);
-                    return Err(ApiError::Timeout);
-                }
-                retries += 1;
-                if retries > MAX_RETRIES {
-                    return Err(ApiError::Timeout);
-                }
-                let wait = 2u64.pow(retries).min(30);
-                pb.suspend(|| {
-                    eprintln!("[TIMEOUT] request timed out, waiting {}s (retry {}/{}, {} consecutive)", wait, retries, MAX_RETRIES, count);
-                });
-                tokio::time::sleep(tokio::time::Duration::from_secs(wait)).await;
-            }
-            Err(ApiError::Billing(msg)) => {
-                pb.suspend(|| {
-                    eprintln!("[FATAL] billing error, shutting down gracefully: {}", msg);
-                });
-                cancel.store(true, Ordering::Relaxed);
-                return Err(ApiError::Billing(msg));
-            }
-            Err(e) => return Err(e),
-        }
-    }
-}
 
 fn count_existing_tasks(path: &PathBuf) -> usize {
     if !path.exists() {
