@@ -477,7 +477,8 @@ async fn api_request(
         "contents": [{ "role": "user", "parts": [{ "text": user_text }] }],
         "generationConfig": {
             "temperature": body.temperature,
-            "maxOutputTokens": body.max_tokens.unwrap_or(2048)
+            "maxOutputTokens": body.max_tokens.unwrap_or(8192),
+            "responseMimeType": "application/json"
         }
     });
 
@@ -795,17 +796,16 @@ async fn main() -> Result<()> {
     let count = args.count;
     let workers = args.workers;
 
-    // pre-sample all domain/difficulty/language tuples to avoid RNG contention in workers
+    // Pre-sample tuples to preserve weighted distributions, then send at most 30 per API call.
+    const BATCH_SIZE: usize = 30;
     let mut rng = thread_rng();
     let presampled: Vec<(String, String, String, u8, Option<String>)> = (0..count)
         .map(|_| {
             let (cat, name, sub) = sample_domain(&mut rng, &pool);
             let diff = sample_difficulty(&mut rng, &diff_dist);
-            let lang = Some("id".to_string());
-            (cat, name, sub, diff, lang)
+            (cat, name, sub, diff, Some("id".to_string()))
         })
         .collect();
-
     let presampled = Arc::new(presampled);
 
     let pb = ProgressBar::new(count as u64);
@@ -817,8 +817,8 @@ async fn main() -> Result<()> {
     );
     pb.set_message("starting...");
 
-    stream::iter(0..count)
-        .for_each_concurrent(workers, |i| {
+    stream::iter((0..count).step_by(BATCH_SIZE).collect::<Vec<_>>())
+        .for_each_concurrent(workers, |start| {
             let clients = clients.clone();
             let proxy_counter = proxy_counter.clone();
             let file = file.clone();
@@ -834,12 +834,12 @@ async fn main() -> Result<()> {
             let pb = pb.clone();
 
             async move {
+                let end = (start + BATCH_SIZE).min(presampled.len());
+                let batch_len = end - start;
                 if cancel.load(Ordering::Relaxed) {
-                    pb.inc(1);
+                    pb.inc(batch_len as u64);
                     return;
                 }
-
-                let (ref cat, ref domain_name, ref subdomain, difficulty, ref lang) = presampled[i];
 
                 if let (Some(b), Some(ip), Some(op)) = (budget, input_price, output_price) {
                     let in_tok = stats.input_tokens.load(Ordering::Relaxed) as f64;
@@ -847,89 +847,61 @@ async fn main() -> Result<()> {
                     let cost = (ip * in_tok / 1_000_000.0) + (op * out_tok / 1_000_000.0);
                     if cost >= b {
                         cancel.store(true, Ordering::Relaxed);
-                        pb.inc(1);
+                        pb.inc(batch_len as u64);
                         return;
                     }
                 }
 
-                let use_model = model.clone();
-
-                let domain_display = format!("{}::{}", cat, domain_name);
+                let batch: Vec<(String, String, String, u8, Option<String>)> = presampled[start..end].to_vec();
                 let client_idx = proxy_counter.fetch_add(1, Ordering::Relaxed) % clients.len();
                 let client = &clients[client_idx];
                 let key_idx = key_counter.fetch_add(1, Ordering::Relaxed) % api_keys.len();
                 let api_key = &api_keys[key_idx];
 
-                match generate_task(
-                    client,
-                    api_key,
-                    &use_model,
-                    &system_prompt,
-                    cat,
-                    &domain_display,
-                    subdomain,
-                    difficulty,
-                    temperature,
-                    lang.as_deref(),
-                    &cancel,
-                    &consecutive_timeouts,
-                    &pb,
-                )
-                .await
-                {
-                    Ok((prompt, in_tok, out_tok)) => {
-                        if prompt.trim().is_empty() {
-                            stats.errors.fetch_add(1, Ordering::Relaxed);
-                            pb.inc(1);
-                            return;
-                        }
-                        let entry = TaskEntry {
-                            prompt,
-                            domain: format!("{}::{}", category_label(cat), domain_label(domain_name)),
-                            subdomain: subdomain.clone(),
-                            difficulty,
-                            language: Some("id".to_string()),
-                            taskgen_model: use_model,
-                            temperature,
-                        };
-                        let line = serde_json::to_string(&entry).unwrap() + "\n";
-                        {
-                            let mut f = file.lock().unwrap();
-                            let _ = f.write_all(line.as_bytes());
-                            let _ = f.flush();
-                        }
+                match generate_batch(
+                    client, api_key, &model, &system_prompt, &batch, temperature,
+                    &cancel, &consecutive_timeouts, &pb,
+                ).await {
+                    Ok((prompts, in_tok, out_tok)) => {
                         stats.input_tokens.fetch_add(in_tok, Ordering::Relaxed);
                         stats.output_tokens.fetch_add(out_tok, Ordering::Relaxed);
-                        let done = stats.tasks.fetch_add(1, Ordering::Relaxed) + 1;
-                        let errs = stats.errors.load(Ordering::Relaxed);
-                        let cur_in = stats.input_tokens.load(Ordering::Relaxed) as f64;
-                        let cur_out = stats.output_tokens.load(Ordering::Relaxed) as f64;
-                        let total_tok = (cur_in + cur_out) as u64;
-                        let cost_str = match (input_price, output_price) {
-                            (Some(ip), Some(op)) => {
-                                let cost = (ip * cur_in / 1_000_000.0) + (op * cur_out / 1_000_000.0);
-                                if let Some(b) = budget {
-                                    if cost >= b {
-                                        cancel.store(true, Ordering::Relaxed);
-                                    }
-                                }
-                                format!(" | ${:.4}", cost)
+
+                        for (offset, prompt) in prompts.into_iter().enumerate() {
+                            let (ref cat, ref domain_name, ref subdomain, difficulty, ref _lang) = batch[offset];
+                            if prompt.trim().is_empty() {
+                                stats.errors.fetch_add(1, Ordering::Relaxed);
+                                continue;
                             }
-                            _ => String::new(),
-                        };
-                        pb.set_message(format!(
-                            "{} ok | {} err | {}k tok{}",
-                            done, errs, total_tok / 1000, cost_str
-                        ));
+                            let entry = TaskEntry {
+                                prompt,
+                                domain: format!("{}::{}", category_label(cat), domain_label(domain_name)),
+                                subdomain: subdomain.clone(),
+                                difficulty,
+                                language: Some("id".to_string()),
+                                taskgen_model: model.clone(),
+                                temperature,
+                            };
+                            let line = serde_json::to_string(&entry).unwrap() + "\n";
+                            let mut f = file.lock().unwrap();
+                            if let Err(e) = f.write_all(line.as_bytes()).and_then(|_| f.flush()) {
+                                stats.errors.fetch_add(1, Ordering::Relaxed);
+                                pb.suspend(|| eprintln!("[ERROR] failed writing output: {}", e));
+                            } else {
+                                let done = stats.tasks.fetch_add(1, Ordering::Relaxed) + 1;
+                                pb.set_message(format!("{} ok | {} err | {}k tok", done,
+                                    stats.errors.load(Ordering::Relaxed),
+                                    (stats.input_tokens.load(Ordering::Relaxed) + stats.output_tokens.load(Ordering::Relaxed)) / 1000));
+                            }
+                        }
                     }
                     Err(e) => {
-                        stats.errors.fetch_add(1, Ordering::Relaxed);
+                        stats.errors.fetch_add(batch_len, Ordering::Relaxed);
                         if !cancel.load(Ordering::Relaxed) {
-                            pb.suspend(|| eprintln!("[ERROR] task {}: {}", i + 1, e));
+                            pb.suspend(|| eprintln!("[ERROR] batch {}-{}: {}", start + 1, end, e));
                         }
                     }
                 }
-                pb.inc(1);
+                pb.inc(batch_len as u64);
             }
         })
         .await;
