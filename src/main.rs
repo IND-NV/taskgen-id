@@ -818,6 +818,9 @@ fn validate_args(args: &Args) -> Result<()> {
             }
         }
     }
+    if args.budget.is_some() && (args.input_price.is_none() || args.output_price.is_none()) {
+        bail!("--budget requires both --input-price and --output-price so cost can be estimated");
+    }
     if let Some(path) = &args.readme_output {
         if path == &args.output {
             bail!("--readme-output must not be the same path as --output");
@@ -901,6 +904,13 @@ async fn main() -> Result<()> {
     let output_price = args.output_price;
     let count = args.count;
     let workers = args.workers;
+    // When a priced budget cap is active, serialize batches so the next budget
+    // check sees the previous batch's token usage. A single batch may still overshoot.
+    let concurrency = if budget.is_some() && input_price.is_some() && output_price.is_some() {
+        1
+    } else {
+        workers
+    };
 
     // Pre-sample tuples to preserve weighted distributions, then send at most 30 per API call.
     const BATCH_SIZE: usize = 30;
@@ -924,7 +934,7 @@ async fn main() -> Result<()> {
     pb.set_message("starting...");
 
     stream::iter((0..count).step_by(BATCH_SIZE).collect::<Vec<_>>())
-        .for_each_concurrent(workers, |start| {
+        .for_each_concurrent(concurrency, |start| {
             let clients = clients.clone();
             let proxy_counter = proxy_counter.clone();
             let file = file.clone();
@@ -1212,6 +1222,16 @@ mod tests {
         let mut args = test_args();
         args.budget = Some(-1.0);
         assert!(validate_args(&args).is_err());
+
+        let mut args = test_args();
+        args.budget = Some(1.0);
+        assert!(validate_args(&args).is_err());
+
+        let mut args = test_args();
+        args.budget = Some(1.0);
+        args.input_price = Some(1.0);
+        args.output_price = Some(1.0);
+        assert!(validate_args(&args).is_ok());
     }
 
     #[test]
