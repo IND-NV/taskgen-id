@@ -101,17 +101,11 @@ const DEFAULT_DISTRIBUTION: &[(&str, f64)] = &[
     ("conversation", 0.10),
 ];
 
-const DEFAULT_DIFFICULTY: &[(u8, f64)] = &[
-    (1, 0.05),
-    (2, 0.05),
-    (3, 0.10),
-    (4, 0.15),
-    (5, 0.20),
-    (6, 0.15),
-    (7, 0.10),
-    (8, 0.08),
-    (9, 0.07),
-    (10, 0.05),
+const DEFAULT_DIFFICULTY: &[(&str, f64)] = &[
+    ("easy", 0.15),
+    ("medium", 0.45),
+    ("hard", 0.25),
+    ("expert", 0.15),
 ];
 
 fn category_label(category: &str) -> &'static str {
@@ -153,19 +147,45 @@ fn humanize_subdomain(subdomain: &str) -> String {
     subdomain.replace('_', " ")
 }
 
-fn difficulty_label(d: u8) -> &'static str {
+fn difficulty_description(d: &str) -> &'static str {
     match d {
-        1 => "Sangat mudah",
-        2 => "Mudah",
-        3 => "Dasar",
-        4 => "Menengah",
-        5 => "Standar",
-        6 => "Mahir",
-        7 => "Profesional",
-        8 => "Lanjutan",
-        9 => "Ahli",
-        10 => "Sangat ahli lintas bidang",
-        _ => "Tidak diketahui",
+        "easy" => "dasar atau satu langkah",
+        "medium" => "penerapan atau beberapa langkah",
+        "hard" => "analisis mendalam dan penalaran multi-langkah",
+        "expert" => "sintesis tingkat lanjut dan evaluasi alternatif",
+        _ => "tingkat kesulitan tidak diketahui",
+    }
+}
+
+fn legacy_difficulty(value: u64) -> &'static str {
+    match value {
+        1..=3 => "easy",
+        4..=6 => "medium",
+        7..=8 => "hard",
+        9..=10 => "expert",
+        _ => "medium",
+    }
+}
+
+fn deserialize_difficulty<'de, D>(deserializer: D) -> std::result::Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    match value {
+        serde_json::Value::String(label) => {
+            let label = label.to_lowercase();
+            if ["easy", "medium", "hard", "expert"].contains(&label.as_str()) {
+                Ok(label)
+            } else {
+                Err(serde::de::Error::custom(format!("unknown difficulty label: {label}")))
+            }
+        }
+        serde_json::Value::Number(number) => number.as_u64()
+            .map(legacy_difficulty)
+            .map(str::to_string)
+            .ok_or_else(|| serde::de::Error::custom("legacy difficulty must be an integer from 1 to 10")),
+        _ => Err(serde::de::Error::custom("difficulty must be a label or legacy integer")),
     }
 }
 
@@ -234,12 +254,16 @@ struct Args {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TaskEntry {
-    prompt: String,
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    generated_date: Option<String>,
     domain: String,
     subdomain: String,
-    difficulty: u8,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(deserialize_with = "deserialize_difficulty")]
+    difficulty: String,
     language: Option<String>,
+    prompt: String,
     model: String,
 }
 
@@ -314,30 +338,25 @@ fn parse_distribution(input: &str) -> Result<HashMap<String, f64>> {
     Ok(normalized)
 }
 
-fn parse_difficulty(input: &str) -> Result<HashMap<u8, f64>> {
+fn parse_difficulty(input: &str) -> Result<HashMap<String, f64>> {
     let mut map = HashMap::new();
     for pair in input.split(',') {
         let pair = pair.trim();
         let (key, val) = pair.split_once('=').context(format!("invalid difficulty pair: {}", pair))?;
-        let key: String = key.trim().to_lowercase();
-        let d: u8 = if key.starts_with('d') {
-            key[1..].parse().context(format!("invalid difficulty level: {}", key))?
-        } else {
-            key.parse().context(format!("invalid difficulty level: {}", key))?
-        };
-        if !(1..=10).contains(&d) {
-            bail!("difficulty must be 1-10, got {}", d);
+        let label = key.trim().to_lowercase();
+        if !["easy", "medium", "hard", "expert"].contains(&label.as_str()) {
+            bail!("unknown difficulty '{}'; available labels: easy, medium, hard, expert", label);
         }
         let val: f64 = val.trim().parse().context(format!("invalid weight: {}", val))?;
         if !val.is_finite() || val < 0.0 {
-            bail!("weight for difficulty {} must be a finite non-negative number", d);
+            bail!("weight for difficulty '{}' must be a finite non-negative number", label);
         }
-        if map.insert(d, val).is_some() {
-            bail!("duplicate difficulty level '{}' in distribution", d);
+        if map.insert(label.clone(), val).is_some() {
+            bail!("duplicate difficulty label '{}' in distribution", label);
         }
     }
     if map.is_empty() {
-        bail!("difficulty distribution must contain at least one level");
+        bail!("difficulty distribution must contain at least one label");
     }
     let total: f64 = map.values().sum();
     if !total.is_finite() || total <= 0.0 {
@@ -346,7 +365,7 @@ fn parse_difficulty(input: &str) -> Result<HashMap<u8, f64>> {
     if (total - 1.0).abs() > 0.05 {
         bail!("difficulty weights must sum to ~1.0, got {}", total);
     }
-    let normalized: HashMap<u8, f64> = map.into_iter().map(|(k, v)| (k, v / total)).collect();
+    let normalized: HashMap<String, f64> = map.into_iter().map(|(k, v)| (k, v / total)).collect();
     Ok(normalized)
 }
 
@@ -452,11 +471,11 @@ fn sample_domain(rng: &mut impl Rng, pool: &[(String, String, String, f64)]) -> 
     (cat.clone(), name.clone(), sub.clone())
 }
 
-fn sample_difficulty(rng: &mut impl Rng, dist: &HashMap<u8, f64>) -> u8 {
-    let levels: Vec<u8> = dist.keys().copied().collect();
+fn sample_difficulty(rng: &mut impl Rng, dist: &HashMap<String, f64>) -> String {
+    let levels: Vec<String> = dist.keys().cloned().collect();
     let weights: Vec<f64> = levels.iter().map(|l| dist[l]).collect();
     let idx = WeightedIndex::new(&weights).unwrap();
-    levels[idx.sample(rng)]
+    levels[idx.sample(rng)].clone()
 }
 
 enum ApiError {
@@ -586,7 +605,7 @@ async fn generate_batch(
     api_key: &str,
     model: &str,
     system_prompt: &str,
-    tasks: &[(String, String, String, u8, Option<String>)],
+    tasks: &[(String, String, String, String, Option<String>)],
     temperature: f64,
     cancel: &AtomicBool,
     consecutive_timeouts: &AtomicUsize,
@@ -596,8 +615,8 @@ async fn generate_batch(
     for (idx, (category, domain_name, subdomain, difficulty, _language)) in tasks.iter().enumerate() {
         let topic_display = format!("{}::{}", category_label(category), domain_label(domain_name));
         task_descriptions.push_str(&format!(
-            "{}. Topik: {}; subtopik: {}; tingkat kesulitan: {}/10 ({}). Buat pertanyaan spesifik yang berfokus pada subtopik ini.\n",
-            idx + 1, topic_display, humanize_subdomain(subdomain), difficulty, difficulty_label(*difficulty)
+            "{}. Topik: {}; subtopik: {}; tingkat kesulitan: {} ({}). Buat pertanyaan spesifik yang berfokus pada subtopik ini.\n",
+            idx + 1, topic_display, humanize_subdomain(subdomain), difficulty, difficulty_description(difficulty)
         ));
     }
 
@@ -686,22 +705,63 @@ async fn generate_batch(
 }
 
 
-fn count_existing_tasks(path: &PathBuf) -> usize {
-    if !path.exists() {
-        return 0;
+fn task_id_number(id: &str) -> Option<usize> {
+    id.strip_prefix("question-")?.parse::<usize>().ok()
+}
+
+fn prepare_existing_dataset(path: &PathBuf, append: bool) -> Result<(usize, usize)> {
+    if !append || !path.exists() {
+        return Ok((0, 0));
     }
-    let file = File::open(path).ok();
-    match file {
-        Some(f) => BufReader::new(f).lines().filter_map(|l| l.ok()).filter(|l| !l.trim().is_empty()).count(),
-        None => 0,
+    let reader = BufReader::new(File::open(path)
+        .with_context(|| format!("failed to read existing dataset at {}", path.display()))?);
+    let mut entries = Vec::new();
+    let mut seen_ids = HashSet::new();
+    let mut max_id = 0usize;
+    for (index, line) in reader.lines().enumerate() {
+        let line = line?;
+        if line.trim().is_empty() { continue; }
+        let mut entry: TaskEntry = serde_json::from_str(&line)
+            .with_context(|| format!("invalid JSONL record at line {}", index + 1))?;
+        if !entry.id.is_empty() {
+            if let Some(number) = task_id_number(&entry.id) { max_id = max_id.max(number); }
+            if !seen_ids.insert(entry.id.clone()) {
+                entry.id.clear();
+            }
+        }
+        entries.push(entry);
     }
+    for entry in &mut entries {
+        if entry.id.is_empty() {
+            loop {
+                max_id += 1;
+                let candidate = format!("question-{max_id:06}");
+                if seen_ids.insert(candidate.clone()) {
+                    entry.id = candidate;
+                    break;
+                }
+            }
+        }
+        if entry.generated_date.as_deref().is_some_and(|date| date.trim().is_empty()) {
+            entry.generated_date = None;
+        }
+    }
+    let count = entries.len();
+    let mut output = File::create(path)
+        .with_context(|| format!("failed to rewrite migrated dataset at {}", path.display()))?;
+    for entry in entries {
+        serde_json::to_writer(&mut output, &entry)?;
+        output.write_all(b"\n")?;
+    }
+    output.flush()?;
+    Ok((count, max_id))
 }
 
 fn generate_readme(
     args: &Args,
     stats: &RunStats,
     dist: &HashMap<String, f64>,
-    diff_dist: &HashMap<u8, f64>,
+    diff_dist: &HashMap<String, f64>,
 ) -> String {
     let input_cost = args.input_price.map(|p| p * stats.total_input_tokens as f64 / 1_000_000.0);
     let output_cost = args.output_price.map(|p| p * stats.total_output_tokens as f64 / 1_000_000.0);
@@ -740,10 +800,10 @@ fn generate_readme(
     md.push('\n');
 
     md.push_str("## Distribusi Tingkat Kesulitan\n\n");
-    md.push_str("| Level | Keterangan | Bobot |\n|---|---|---|\n");
-    for d in 1..=10u8 {
-        if let Some(w) = diff_dist.get(&d) {
-            md.push_str(&format!("| {} | {} | {:.1}% |\n", d, difficulty_label(d), w * 100.0));
+    md.push_str("| Label | Kompleksitas | Bobot |\n|---|---|---|\n");
+    for label in ["easy", "medium", "hard", "expert"] {
+        if let Some(w) = diff_dist.get(label) {
+            md.push_str(&format!("| {} | {} | {:.1}% |\n", label, difficulty_description(label), w * 100.0));
         }
     }
     md.push('\n');
@@ -772,11 +832,13 @@ fn generate_readme(
     md.push_str("Setiap baris file JSONL berisi:\n\n");
     md.push_str("```json\n");
     md.push_str("{\n");
-    md.push_str("  \"prompt\": \"...\",\n");
-    md.push_str("  \"domain\": \"math::Algebra\",\n");
+    md.push_str("  \"id\": \"question-000001\",\n");
+    md.push_str("  \"generated_date\": \"2026-10-17\",\n");
+    md.push_str("  \"domain\": \"Matematika::Aljabar\",\n");
     md.push_str("  \"subdomain\": \"polynomials\",\n");
-    md.push_str("  \"difficulty\": 5,\n");
+    md.push_str("  \"difficulty\": \"medium\",\n");
     md.push_str("  \"language\": \"id\",\n");
+    md.push_str("  \"prompt\": \"...\" ,\n");
     md.push_str(&format!("  \"model\": \"{}\"\n", args.model));
     md.push_str("}\n");
     md.push_str("```\n\n");
@@ -852,9 +914,9 @@ async fn main() -> Result<()> {
         None => DEFAULT_DISTRIBUTION.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
     };
 
-    let diff_dist: HashMap<u8, f64> = match &args.difficulty {
+    let diff_dist: HashMap<String, f64> = match &args.difficulty {
         Some(d) => parse_difficulty(d)?,
-        None => DEFAULT_DIFFICULTY.iter().map(|(k, v)| (*k, *v)).collect(),
+        None => DEFAULT_DIFFICULTY.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
     };
 
     let pool = build_domain_pool(&dist);
@@ -864,10 +926,11 @@ async fn main() -> Result<()> {
 
     let system_prompt = args.system_prompt.as_deref().unwrap_or(DEFAULT_SYSTEM_PROMPT);
 
-    let existing = if args.append { count_existing_tasks(&args.output) } else { 0 };
+    let (existing, max_id) = prepare_existing_dataset(&args.output, args.append)?;
     if existing > 0 {
-        println!("Appending to existing file with {} tasks", existing);
+        println!("Appending to existing file with {} tasks (dataset schema migrated/validated)", existing);
     }
+    let next_id = Arc::new(AtomicUsize::new(max_id));
 
     let file = if args.append && args.output.exists() {
         OpenOptions::new().append(true).open(&args.output)?
@@ -915,7 +978,7 @@ async fn main() -> Result<()> {
     // Pre-sample tuples to preserve weighted distributions, then send at most 30 per API call.
     const BATCH_SIZE: usize = 30;
     let mut rng = thread_rng();
-    let presampled: Vec<(String, String, String, u8, Option<String>)> = (0..count)
+    let presampled: Vec<(String, String, String, String, Option<String>)> = (0..count)
         .map(|_| {
             let (cat, name, sub) = sample_domain(&mut rng, &pool);
             let diff = sample_difficulty(&mut rng, &diff_dist);
@@ -946,6 +1009,7 @@ async fn main() -> Result<()> {
             let model = args.model.clone();
             let system_prompt = system_prompt.to_string();
             let presampled = presampled.clone();
+            let next_id = next_id.clone();
             let temperature = args.temperature;
             let pb = pb.clone();
 
@@ -968,7 +1032,7 @@ async fn main() -> Result<()> {
                     }
                 }
 
-                let batch: Vec<(String, String, String, u8, Option<String>)> = presampled[start..end].to_vec();
+                let batch: Vec<(String, String, String, String, Option<String>)> = presampled[start..end].to_vec();
                 let client_idx = proxy_counter.fetch_add(1, Ordering::Relaxed) % clients.len();
                 let client = &clients[client_idx];
                 let key_idx = key_counter.fetch_add(1, Ordering::Relaxed) % api_keys.len();
@@ -983,21 +1047,24 @@ async fn main() -> Result<()> {
                         stats.output_tokens.fetch_add(out_tok, Ordering::Relaxed);
 
                         for (offset, prompt) in prompts.into_iter().enumerate() {
-                            let (ref cat, ref domain_name, ref subdomain, difficulty, ref _lang) = batch[offset];
+                            let (ref cat, ref domain_name, ref subdomain, ref difficulty, ref _lang) = batch[offset];
                             if prompt.trim().is_empty() {
                                 stats.errors.fetch_add(1, Ordering::Relaxed);
                                 continue;
                             }
+                            let mut f = file.lock().unwrap();
+                            let id_number = next_id.fetch_add(1, Ordering::Relaxed) + 1;
                             let entry = TaskEntry {
-                                prompt,
+                                id: format!("question-{id_number:06}"),
+                                generated_date: Some(Local::now().format("%Y-%m-%d").to_string()),
                                 domain: format!("{}::{}", category_label(cat), domain_label(domain_name)),
                                 subdomain: subdomain.clone(),
-                                difficulty,
+                                difficulty: difficulty.clone(),
                                 language: Some("id".to_string()),
+                                prompt,
                                 model: model.clone(),
                             };
                             let line = serde_json::to_string(&entry).unwrap() + "\n";
-                            let mut f = file.lock().unwrap();
                             if let Err(e) = f.write_all(line.as_bytes()).and_then(|_| f.flush()) {
                                 stats.errors.fetch_add(1, Ordering::Relaxed);
                                 pb.suspend(|| eprintln!("[ERROR] failed writing output: {}", e));
@@ -1196,9 +1263,10 @@ mod tests {
 
     #[test]
     fn difficulty_rejects_invalid_weights_and_duplicate_levels() {
-        assert!(parse_difficulty("3=-1.0,4=2.0").is_err());
-        assert!(parse_difficulty("3=NaN").is_err());
-        assert!(parse_difficulty("3=0.5,3=0.5").is_err());
+        assert!(parse_difficulty("easy=-1.0,medium=2.0").is_err());
+        assert!(parse_difficulty("easy=NaN").is_err());
+        assert!(parse_difficulty("easy=0.5,easy=0.5").is_err());
+        assert!(parse_difficulty("impossible=1.0").is_err());
     }
 
     #[test]
@@ -1253,8 +1321,8 @@ mod tests {
     fn valid_distributions_are_normalized() {
         let dist = parse_distribution("math=0.5,coding=0.5").unwrap();
         assert!((dist["math"] - 0.5).abs() < 1e-9);
-        let difficulty = parse_difficulty("d3=0.25,7=0.75").unwrap();
-        assert!((difficulty[&3] - 0.25).abs() < 1e-9);
-        assert!((difficulty[&7] - 0.75).abs() < 1e-9);
+        let difficulty = parse_difficulty("easy=0.25,expert=0.75").unwrap();
+        assert!((difficulty["easy"] - 0.25).abs() < 1e-9);
+        assert!((difficulty["expert"] - 0.75).abs() < 1e-9);
     }
 }
