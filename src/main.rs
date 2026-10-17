@@ -1215,9 +1215,11 @@ mod tests {
         args.dedup_threshold = 1.5;
         assert!(validate_args(&args).is_err());
 
+        // Input pricing may be supplied alone for cost estimation; only --budget
+        // requires both input and output prices.
         let mut args = test_args();
         args.input_price = Some(1.0);
-        assert!(validate_args(&args).is_err());
+        assert!(validate_args(&args).is_ok());
 
         let mut args = test_args();
         args.budget = Some(-1.0);
