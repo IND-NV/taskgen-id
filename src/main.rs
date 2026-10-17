@@ -748,13 +748,23 @@ fn prepare_existing_dataset(path: &PathBuf, append: bool) -> Result<(usize, usiz
         }
     }
     let count = entries.len();
-    let mut output = File::create(path)
-        .with_context(|| format!("failed to rewrite migrated dataset at {}", path.display()))?;
-    for entry in entries {
-        serde_json::to_writer(&mut output, &entry)?;
-        output.write_all(b"\n")?;
+    let temp_path = path.with_extension("jsonl.migrating");
+    let write_result = (|| -> Result<()> {
+        let mut output = File::create(&temp_path)
+            .with_context(|| format!("failed to create migration file at {}", temp_path.display()))?;
+        for entry in &entries {
+            serde_json::to_writer(&mut output, entry)?;
+            output.write_all(b"\n")?;
+        }
+        output.flush()?;
+        Ok(())
+    })();
+    if let Err(error) = write_result {
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(error);
     }
-    output.flush()?;
+    std::fs::rename(&temp_path, path)
+        .with_context(|| format!("failed to replace dataset with migrated file at {}", path.display()))?;
     Ok((count, max_id))
 }
 
@@ -1351,9 +1361,13 @@ mod tests {
             prompt: "Apa itu gravitasi?".to_string(),
             model: "test-model".to_string(),
         };
-        let value: serde_json::Value = serde_json::from_str(&serde_json::to_string(&entry).unwrap()).unwrap();
-        let keys: Vec<&str> = value.as_object().unwrap().keys().copied().collect();
-        assert_eq!(keys.len(), 8);
+        let serialized = serde_json::to_string(&entry).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(value.as_object().unwrap().len(), 8);
+        let field_order = ["\"id\"", "\"generated_date\"", "\"domain\"", "\"subdomain\"",
+                           "\"difficulty\"", "\"language\"", "\"prompt\"", "\"model\""];
+        let positions: Vec<usize> = field_order.iter().map(|field| serialized.find(field).unwrap()).collect();
+        assert!(positions.windows(2).all(|pair| pair[0] < pair[1]), "fields must use canonical order");
         assert_eq!(entry.difficulty, "medium");
         assert_eq!(value["generated_date"], "2026-10-17");
     }
