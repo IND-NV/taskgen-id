@@ -33,23 +33,17 @@ This file is the durable project handoff for future maintainers and AI assistant
 - Notebook generation currently fixes temperature at `1.0`; it does not expose a temperature control.
 - Notebook's dataset format differs from the CLI format: CLI = JSONL, Colab master dataset = JSON array.
 
-## High-priority issue found during source review
+## High-priority issue addressed on branch `fix/cli-safety-validation`
 
-**Potential destructive README overwrite:** in `src/main.rs`, after generation the program computes the README path from the parent of `args.output` and opens it with `File::create`. With default `--output output.jsonl` when run from the repository root, this resolves to `./README.md` and can overwrite the project's own README with a generated dataset report.
+The original CLI wrote generated metadata to `README.md` beside `--output`, which could overwrite the project's own README when the default output path was used from the repository root. The fix changes the default filename to `DATASET_README.md` and adds `--readme-output` for an explicit destination. It also rejects an identical lexical path for `--readme-output` and `--output`.
 
-Recommended fix:
-1. Do not write generated dataset documentation to a generic `README.md` in the output parent by default.
-2. Prefer a dedicated name such as `DATASET_README.md` or `output_README.md`, or add an explicit `--readme-output` option.
-3. Add a guard that refuses to overwrite a pre-existing README unless the user explicitly opts in.
-4. Add a regression test for running with default output in the repository root.
-
-Until fixed, run the CLI with `--output generated/output.jsonl` and ensure the `generated` directory exists; the generated README is then placed in `generated/README.md`.
+Unit tests were added for input validation and distribution parsing. They still need to run in CI or a Rust environment before the patch should be considered verified.
 
 ## Other review items to validate/fix
 
 These are code-review findings or likely edge cases, not all confirmed runtime failures. Verify with tests before changing behavior.
 
-1. **Input validation:** `parse_distribution` and `parse_difficulty` check that weights sum near 1.0 but should also reject negative, non-finite, and zero-total weights and reject unknown category IDs before sampling. Current sampling uses `WeightedIndex::new(...).unwrap()`, which can panic for invalid weights.
+1. **Input validation:** the branch now rejects negative/non-finite/zero-total weights, unknown category IDs, duplicate keys, invalid worker count, out-of-range temperature/dedup threshold, and invalid prices/budget. Sampling still uses `WeightedIndex::new(...).unwrap()`, so keep validation and tests aligned if sampling code changes.
 2. **Numeric CLI validation:** validate `--workers > 0`, a sensible `--dedup-threshold` range (normally 0.0–1.0), finite/nonnegative temperature, and nonnegative finite prices/budget.
 3. **Budget race/overshoot:** the budget check occurs before concurrent batches and token totals are updated after API calls, so multiple in-flight batches may exceed the requested budget. Clarify that `--budget` is approximate or implement reservation/serialized accounting.
 4. **HTTP/API robustness:** handle Gemini responses with no candidate due to safety blocking or finish reason; retry only transient failures and consider bounded retries/backoff for selected 5xx errors. Avoid logging sensitive API response bodies if they could include private data.
