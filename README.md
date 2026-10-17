@@ -9,9 +9,9 @@ TaskGen Indonesia adalah generator tugas/pertanyaan untuk membangun dataset berg
 - Menggunakan Gemini API native REST (`generateContent`), tanpa OpenAI API atau Python SDK `google-genai`.
 - API key dibaca dari `GEMINI_API_KEY` atau argumen CLI yang tersedia.
 - Model dapat dipilih saat menjalankan CLI; notebook mengambil daftar model yang mendukung `generateContent` dari API.
-- System prompt berbahasa Indonesia dengan penyesuaian nada/konteks dan tingkat kesulitan 1–10.
+- System prompt berbahasa Indonesia dengan penyesuaian nada/konteks dan empat label kompleksitas: `easy`, `medium`, `hard`, `expert`.
 - Enam kategori: matematika, pemrograman, sains, ilmu komputer, kreativitas/penulisan, dan percakapan.
-- Bobot kategori dan tingkat kesulitan dapat dikonfigurasi.
+- Bobot kategori dan label kesulitan dapat dikonfigurasi; label didasarkan pada kompleksitas penalaran, bukan nomor.
 - Permintaan batch dan worker paralel.
 - Retry dengan jeda bertahap untuk HTTP 429 dan timeout, serta penghentian ketika terdeteksi masalah billing.
 - Output CLI berupa JSONL, satu task per baris; notebook menggabungkan hasil ke JSON array di Google Drive.
@@ -40,7 +40,7 @@ taskgen-id/
 5. Pilih model, jumlah tugas, kategori, tingkat kesulitan, dan jumlah worker; lalu tekan **Generate**.
 6. Dataset gabungan disimpan ke `MyDrive/TaskGen-Indonesia/task_id.json`.
 
-Notebook saat ini menyimpan setiap task dengan enam field inti: `prompt`, `domain`, `subdomain`, `difficulty`, `language`, dan `model`. Dataset tersebut adalah JSON array, bukan JSONL. Notebook menggunakan temperatur `1.0` dan secara default mengaktifkan deduplikasi prompt.
+Notebook menyimpan delapan field dalam JSON array: `id`, `generated_date`, `domain`, `subdomain`, `difficulty`, `language`, `prompt`, dan `model`. CLI menggunakan JSONL dengan skema yang sama. Notebook menggunakan temperatur `1.0` dan secara default mengaktifkan deduplikasi prompt.
 
 Notebook mengkloning branch `main` dan membangun kode Rust dari repository, jadi perubahan di branch tersebut akan dipakai saat notebook dijalankan kembali. Runtime Colab bersifat sementara; simpan data penting ke Drive.
 
@@ -64,15 +64,15 @@ mkdir -p generated
   --workers 2
 ```
 
-Contoh hanya matematika dengan tingkat kesulitan 7:
+Contoh hanya matematika dengan tingkat kesulitan `hard`:
 
 ```bash
 ./target/release/taskgen \
   --count 50 \
   --model gemini-3.5-flash-lite \
   --distribution "math=1.0" \
-  --difficulty "7=1.0" \
-  --output generated/matematika_level7.jsonl \
+  --difficulty "hard=1.0" \
+  --output generated/matematika_hard.jsonl \
   --workers 2
 ```
 
@@ -85,7 +85,7 @@ Pastikan direktori yang diberikan ke `--output` sudah ada. Ringkasan generasi di
 | `--count`, `-c` | `250` | Jumlah tugas yang ditargetkan |
 | `--model`, `-m` | `gemini-3.5-flash-lite` | ID model Gemini |
 | `--distribution` | Distribusi bawaan | Bobot kategori; total bobot harus mendekati 1.0 |
-| `--difficulty` | Distribusi bawaan | Bobot level 1–10; total bobot harus mendekati 1.0 |
+| `--difficulty` | Distribusi bawaan | Bobot label `easy`, `medium`, `hard`, `expert`; total bobot harus mendekati 1.0 |
 | `--workers`, `-w` | `5` | Batas batch yang diproses bersamaan |
 | `--output`, `-o` | `output.jsonl` | Lokasi output JSONL |
 | `--temperature`, `-t` | `1.0` | Variasi generasi |
@@ -108,7 +108,7 @@ Pastikan direktori yang diberikan ke `--output` sudah ada. Ringkasan generasi di
 - `creative`: Kreativitas dan penulisan
 - `conversation`: Percakapan
 
-Contoh memilih satu kategori: `--distribution "science=1.0"`. Untuk level tunggal: `--difficulty "4=1.0"`.
+Contoh memilih satu kategori: `--distribution "science=1.0"`. Untuk satu label: `--difficulty "medium=1.0"`. Contoh bobot khusus: `--difficulty "easy=0.15,medium=0.45,hard=0.25,expert=0.15"`.
 
 ## Format output
 
@@ -117,14 +117,14 @@ Contoh memilih satu kategori: `--distribution "science=1.0"`. Untuk level tungga
 Satu baris untuk setiap task:
 
 ```json
-{"prompt":"Bagaimana cara ...?","domain":"Matematika::Aljabar","subdomain":"linear_equations","difficulty":4,"language":"id","model":"gemini-3.5-flash-lite"}
+{"id":"question-000001","generated_date":"2026-10-17","domain":"Matematika::Aljabar","subdomain":"linear_equations","difficulty":"medium","language":"id","prompt":"Bagaimana cara ...?","model":"gemini-3.5-flash-lite"}
 ```
 
-Field yang ditulis kode Rust saat ini adalah `prompt`, `domain`, `subdomain`, `difficulty`, `language`, dan `model`. Field `language` dapat tidak ditulis jika nilainya tidak tersedia, tetapi generator saat ini mengisinya dengan `id`.
+Urutan field kanonis: `id`, `generated_date`, `domain`, `subdomain`, `difficulty`, `language`, `prompt`, `model`. ID berbentuk `question-000001` dan berurutan; mode append melanjutkan nomor tertinggi yang ada. `generated_date` menggunakan format `YYYY-MM-DD`; tanggal historis yang tidak diketahui tetap `null`. Data lama dipertahankan dan tingkat kesulitan numerik dipetakan: 1–3 ke `easy`, 4–6 ke `medium`, 7–8 ke `hard`, 9–10 ke `expert`.
 
 ### Notebook: JSON array
 
-Notebook menggabungkan hasil ke `MyDrive/TaskGen-Indonesia/task_id.json`, dengan enam field inti yang sama. Format notebook berbeda dari JSONL CLI.
+Notebook menggabungkan hasil ke `MyDrive/TaskGen-Indonesia/task_id.json` sebagai JSON array dengan delapan field kanonis yang sama. Format kontainer berbeda dari JSONL CLI, tetapi skema record konsisten.
 
 ## Rate limit, model, dan kualitas data
 
