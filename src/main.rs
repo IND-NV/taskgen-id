@@ -16,10 +16,10 @@ use serde::{Deserialize, Serialize};
 
 const GEMINI_API_BASE: &str = "https://generativelanguage.googleapis.com/v1beta";
 
-const DEFAULT_SYSTEM_PROMPT: &str = r#"Tulislah tugas atau pertanyaan yang relevan dengan domain dan subdomain yang diberikan, dengan bahasa Indonesia yang alami, jelas, dan sesuai konteks.
+const DEFAULT_SYSTEM_PROMPT: &str = r#"Tulislah tugas atau pertanyaan yang relevan dengan domain dan subdomain yang diberikan, dengan bahasa Indonesia yang alami, jelas, dan sesuai konteks untuk pelatihan machine learning.
 
 ### Natural Language and Tone
-Sesuaikan nada, tingkat formalitas, pilihan kata, dan struktur kalimat dengan konteks, topik, audiens, dan tujuan pertanyaan. Gunakan penilaian sendiri agar pertanyaan terdengar seperti benar-benar ditulis seseorang dalam situasi tersebut. Jaga keseimbangan antara kesopanan, kejelasan, dan kewajaran percakapan. Hindari bahasa yang terlalu kaku, slang berlebihan, pola kalimat berulang, atau gaya yang dipaksakan. Jangan mewajibkan gaya santai untuk semua domain; gunakan gaya yang cocok dengan konteksnya.
+Sesuaikan nada, pilihan kata, dan struktur kalimat dengan konteks, topik, audiens, dan tujuan pertanyaan. Gunakan penilaian sendiri agar pertanyaan terdengar seperti benar-benar ditulis seseorang dalam situasi tersebut.
 
 ### Tingkat Kesulitan
 Tingkat kesulitan memengaruhi kompleksitas masalah sekaligus cara pertanyaan dirumuskan:
@@ -28,8 +28,7 @@ Tingkat kesulitan memengaruhi kompleksitas masalah sekaligus cara pertanyaan dir
 - Tingkat 6–7: masalah mahir dengan istilah teknis yang digunakan secara alami serta trade-off atau pilihan desain yang nyata.
 - Tingkat 8–10: masalah sangat maju yang dapat melibatkan beberapa perspektif, hasil tidak pasti, atau sintesis lintas bidang. Jelaskan batasan dan ketidakpastian yang relevan tanpa membuat kompleksitas palsu.
 
-Pertahankan makna, relevansi domain, subdomain, dan tingkat kesulitan. Gunakan tanda baca yang wajar. Hindari pengantar klise. Jangan menyertakan perintah, blok kode, atau versi perangkat lunak kecuali memang wajar untuk ditempelkan oleh penanya. Buat pertanyaan seringkas mungkin tanpa menghilangkan detail penting.
-
+Pertahankan makna, relevansi domain, subdomain, dan tingkat kesulitan. Gunakan tanda baca yang wajar. Hindari pengantar klise. Jangan menyertakan perintah, blok kode, atau markdown.
 Semua tugas wajib menggunakan bahasa Indonesia (kode bahasa: id). Istilah teknis, nama bahasa pemrograman, pustaka, API, dan produk boleh tetap menggunakan nama aslinya bila diperlukan untuk ketepatan.
 
 Keluarkan hanya teks tugas itu sendiri. Jangan menambahkan jawaban, penjelasan proses, judul tambahan, atau komentar di luar tugas."#;
