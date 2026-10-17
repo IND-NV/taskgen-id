@@ -856,7 +856,7 @@ fn generate_readme(
 
 
     md.push_str("---\n\n");
-    md.push_str("*Dibuat menggunakan [taskgen](https://github.com/empero-org/taskgen) oleh empero-org*\n");
+    md.push_str("*Dibuat menggunakan [taskgen-id](https://github.com/IND-NV/taskgen-id) oleh Indra & ChatGPT*\n");
 
     md
 }
