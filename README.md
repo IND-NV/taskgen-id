@@ -96,7 +96,7 @@ Pastikan direktori yang diberikan ke `--output` sudah ada. Ringkasan generasi di
 | `--keyfile` | Tidak digunakan | File berisi API key, satu key per baris |
 | `--proxies` | Tidak digunakan | File daftar proxy |
 | `--input-price`, `--output-price` | Tidak digunakan | Harga per satu juta token untuk estimasi biaya |
-| `--budget` | Tidak digunakan | Batas estimasi biaya bila harga token diberikan; batas dapat terlampaui saat beberapa batch sedang berjalan |
+| `--budget` | Tidak digunakan | Membutuhkan kedua harga token; batch dijalankan serial saat budget aktif, tetapi satu batch masih dapat melampaui batas |
 | `--readme-output` | `DATASET_README.md` di folder output | Lokasi ringkasan generasi; tidak lagi menimpa README project secara default |
 
 ### ID kategori
