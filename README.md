@@ -2,7 +2,7 @@
 
 TaskGen Indonesia adalah generator tugas/pertanyaan untuk membangun dataset bergaya supervised fine-tuning (SFT). Implementasi generator ditulis dalam Rust dan menggunakan Google Gemini API melalui REST native. Notebook Google Colab menyediakan UI untuk menghasilkan data dan menyimpan satu dataset gabungan ke Google Drive.
 
-> **Peringatan penting:** pada kode saat ini, program CLI menulis `README.md` ke folder induk dari `--output`. Jika dijalankan dari root repository dengan output default `output.jsonl`, file README project dapat tertimpa oleh README statistik dataset. Sampai perilaku ini diperbaiki, jalankan CLI dari folder output terpisah atau gunakan output di folder khusus, misalnya `--output generated/output.jsonl` (pastikan folder `generated` sudah ada). Lihat [catatan teknis](CONTEXT_FOR_AI.md).
+> **Catatan keamanan output:** CLI kini menulis ringkasan generasi ke `DATASET_README.md` di folder induk `--output`, bukan ke README project. Lokasinya dapat diubah dengan `--readme-output`. Hindari memilih path yang sama dengan file output dataset.
 
 ## Fitur
 
@@ -76,7 +76,7 @@ Contoh hanya matematika dengan tingkat kesulitan 7:
   --workers 2
 ```
 
-Pastikan direktori yang diberikan ke `--output` sudah ada. Jangan menaruh output di root repository sebelum bug penulisan README diperbaiki.
+Pastikan direktori yang diberikan ke `--output` sudah ada. Ringkasan generasi ditulis terpisah sebagai `DATASET_README.md`; kamu juga bisa menentukan lokasi dengan `--readme-output generated/summary.md`.
 
 ## Opsi CLI utama
 
@@ -96,7 +96,8 @@ Pastikan direktori yang diberikan ke `--output` sudah ada. Jangan menaruh output
 | `--keyfile` | Tidak digunakan | File berisi API key, satu key per baris |
 | `--proxies` | Tidak digunakan | File daftar proxy |
 | `--input-price`, `--output-price` | Tidak digunakan | Harga per satu juta token untuk estimasi biaya |
-| `--budget` | Tidak digunakan | Batas estimasi biaya bila harga token diberikan |
+| `--budget` | Tidak digunakan | Batas estimasi biaya bila harga token diberikan; batas dapat terlampaui saat beberapa batch sedang berjalan |
+| `--readme-output` | `DATASET_README.md` di folder output | Lokasi ringkasan generasi; tidak lagi menimpa README project secara default |
 
 ### ID kategori
 
