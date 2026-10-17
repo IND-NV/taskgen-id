@@ -637,16 +637,22 @@ async fn generate_batch(
                     .map_err(|e| ApiError::Other(anyhow::anyhow!("invalid JSON batch: {}", e)))?;
                 let array = value.as_array()
                     .ok_or_else(|| ApiError::Other(anyhow::anyhow!("batch response must be a JSON array")))?;
-                let prompts: Vec<String> = array.iter()
-                    .filter_map(|item| item.as_str())
-                    .map(clean_markdown)
-                    .collect();
-                if prompts.len() != tasks.len() {
+                if array.len() != tasks.len() {
                     return Err(ApiError::Other(anyhow::anyhow!(
-                        "model returned {} prompts for batch size {}; expected exactly {}",
-                        prompts.len(), tasks.len(), tasks.len()
+                        "model returned {} array items for batch size {}; expected exactly {}",
+                        array.len(), tasks.len(), tasks.len()
                     )));
                 }
+                let prompts: Vec<String> = array.iter()
+                    .enumerate()
+                    .map(|(index, item)| {
+                        item.as_str()
+                            .map(clean_markdown)
+                            .ok_or_else(|| ApiError::Other(anyhow::anyhow!(
+                                "batch item {} is not a string", index + 1
+                            )))
+                    })
+                    .collect::<std::result::Result<Vec<_>, _>>()?;
                 return Ok((prompts, input_tokens, output_tokens));
             }
             Err(ApiError::RateLimit(retry_after)) => {
@@ -780,6 +786,12 @@ fn generate_readme(
     md.push_str("*Dibuat menggunakan [taskgen](https://github.com/empero-org/taskgen) oleh empero-org*\n");
 
     md
+}
+
+fn dataset_readme_path(args: &Args) -> PathBuf {
+    args.readme_output.clone().unwrap_or_else(|| {
+        args.output.parent().unwrap_or(std::path::Path::new(".")).join("DATASET_README.md")
+    })
 }
 
 fn validate_args(args: &Args) -> Result<()> {
@@ -1114,9 +1126,7 @@ async fn main() -> Result<()> {
 
     // Dataset is Indonesian-only; no language-based file splitting is performed.
     let readme = generate_readme(&args, &stats, &dist, &diff_dist);
-    let readme_path = args.readme_output.clone().unwrap_or_else(|| {
-        args.output.parent().unwrap_or(std::path::Path::new(".")).join("DATASET_README.md")
-    });
+    let readme_path = dataset_readme_path(&args);
     if readme_path == args.output {
         bail!("generated README path must not be the same as --output");
     }
@@ -1202,6 +1212,12 @@ mod tests {
         let mut args = test_args();
         args.budget = Some(-1.0);
         assert!(validate_args(&args).is_err());
+    }
+
+    #[test]
+    fn default_generated_readme_uses_safe_filename() {
+        let args = test_args();
+        assert_eq!(dataset_readme_path(&args), PathBuf::from("DATASET_README.md"));
     }
 
     #[test]
