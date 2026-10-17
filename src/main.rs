@@ -22,11 +22,12 @@ const DEFAULT_SYSTEM_PROMPT: &str = r#"Tulislah tugas atau pertanyaan yang relev
 Sesuaikan nada, pilihan kata, dan struktur kalimat dengan konteks, topik, audiens, dan tujuan pertanyaan. Gunakan penilaian sendiri agar pertanyaan terdengar seperti benar-benar ditulis seseorang dalam situasi tersebut.
 
 ### Tingkat Kesulitan
-Tingkat kesulitan memengaruhi kompleksitas masalah sekaligus cara pertanyaan dirumuskan:
-- Tingkat 1–3: pertanyaan dasar, kebingungan yang wajar, kalimat sederhana, dan masalah dengan jawaban yang jelas.
-- Tingkat 4–5: masalah nyata dengan beberapa pendekatan atau sedikit ambiguitas. Sebutkan hal yang sudah dicoba jika relevan.
-- Tingkat 6–7: masalah mahir dengan istilah teknis yang digunakan secara alami serta trade-off atau pilihan desain yang nyata.
-- Tingkat 8–10: masalah sangat maju yang dapat melibatkan beberapa perspektif, hasil tidak pasti, atau sintesis lintas bidang. Jelaskan batasan dan ketidakpastian yang relevan tanpa membuat kompleksitas palsu.
+Pilih label sesuai kompleksitas penalaran yang benar-benar dibutuhkan, bukan panjang pertanyaan atau sekadar topiknya:
+- easy: pertanyaan dasar atau satu langkah, dengan jawaban langsung dan jelas.
+- medium: penerapan konsep atau beberapa langkah yang saling terkait.
+- hard: analisis mendalam, banyak langkah, trade-off, atau beberapa pendekatan yang perlu dibandingkan.
+- expert: pemahaman tingkat lanjut, sintesis lintas konsep, evaluasi asumsi, dan alternatif yang bernuansa.
+Gunakan label yang diminta untuk setiap tugas dan jangan mencantumkan label/tingkat kesulitan dalam teks pertanyaan itu sendiri.
 
 Pertahankan makna, relevansi domain, subdomain, dan tingkat kesulitan. Gunakan tanda baca yang wajar. Hindari pengantar klise. Jangan menyertakan perintah, blok kode, atau markdown.
 Semua tugas wajib menggunakan bahasa Indonesia (kode bahasa: id). Istilah teknis, nama bahasa pemrograman, pustaka, API, dan produk boleh tetap menggunakan nama aslinya bila diperlukan untuk ketepatan.
@@ -157,13 +158,13 @@ fn difficulty_description(d: &str) -> &'static str {
     }
 }
 
-fn legacy_difficulty(value: u64) -> &'static str {
+fn legacy_difficulty(value: u64) -> Option<&'static str> {
     match value {
-        1..=3 => "easy",
-        4..=6 => "medium",
-        7..=8 => "hard",
-        9..=10 => "expert",
-        _ => "medium",
+        1..=3 => Some("easy"),
+        4..=6 => Some("medium"),
+        7..=8 => Some("hard"),
+        9..=10 => Some("expert"),
+        _ => None,
     }
 }
 
@@ -182,7 +183,7 @@ where
             }
         }
         serde_json::Value::Number(number) => number.as_u64()
-            .map(legacy_difficulty)
+            .and_then(legacy_difficulty)
             .map(str::to_string)
             .ok_or_else(|| serde::de::Error::custom("legacy difficulty must be an integer from 1 to 10")),
         _ => Err(serde::de::Error::custom("difficulty must be a label or legacy integer")),
@@ -1324,5 +1325,61 @@ mod tests {
         let difficulty = parse_difficulty("easy=0.25,expert=0.75").unwrap();
         assert!((difficulty["easy"] - 0.25).abs() < 1e-9);
         assert!((difficulty["expert"] - 0.75).abs() < 1e-9);
+    }
+
+    #[test]
+    fn legacy_numeric_difficulty_maps_to_labels() {
+        let cases = [(1, "easy"), (3, "easy"), (4, "medium"), (6, "medium"),
+                     (7, "hard"), (8, "hard"), (9, "expert"), (10, "expert")];
+        for (value, expected) in cases {
+            let json = format!(r#"{{"id":"","generated_date":null,"domain":"science::Fisika","subdomain":"mechanics","difficulty":{value},"language":"id","prompt":"Contoh","model":"legacy"}}"#);
+            let entry: TaskEntry = serde_json::from_str(&json).unwrap();
+            assert_eq!(entry.difficulty, expected);
+        }
+        assert!(serde_json::from_str::<TaskEntry>(r#"{"domain":"science","subdomain":"physics","difficulty":11,"language":"id","prompt":"x","model":"m"}"#).is_err());
+    }
+
+    #[test]
+    fn serialized_schema_has_eight_fields_in_canonical_order() {
+        let entry = TaskEntry {
+            id: "question-000001".to_string(),
+            generated_date: Some("2026-10-17".to_string()),
+            domain: "science::Fisika".to_string(),
+            subdomain: "mechanics".to_string(),
+            difficulty: "medium".to_string(),
+            language: Some("id".to_string()),
+            prompt: "Apa itu gravitasi?".to_string(),
+            model: "test-model".to_string(),
+        };
+        let value: serde_json::Value = serde_json::from_str(&serde_json::to_string(&entry).unwrap()).unwrap();
+        let keys: Vec<&str> = value.as_object().unwrap().keys().copied().collect();
+        assert_eq!(keys.len(), 8);
+        assert_eq!(entry.difficulty, "medium");
+        assert_eq!(value["generated_date"], "2026-10-17");
+    }
+
+    #[test]
+    fn append_migrates_legacy_rows_and_assigns_unique_ids_without_inventing_dates() {
+        let path = std::env::temp_dir().join(format!(
+            "taskgen-migration-{}-{}.jsonl",
+            std::process::id(),
+            Local::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        let legacy = concat!(
+            r#"{"prompt":"Pertanyaan lama 1","domain":"Sains::Fisika","subdomain":"mechanics","difficulty":2,"language":"id","model":"legacy"}"#, "\n",
+            r#"{"prompt":"Pertanyaan lama 2","domain":"Sains::Fisika","subdomain":"mechanics","difficulty":9,"language":"id","model":"legacy","id":"question-000007","generated_date":null}"#, "\n"
+        );
+        std::fs::write(&path, legacy).unwrap();
+        let (count, max_id) = prepare_existing_dataset(&path, true).unwrap();
+        assert_eq!(count, 2);
+        assert_eq!(max_id, 8);
+        let records: Vec<serde_json::Value> = BufReader::new(File::open(&path).unwrap())
+            .lines().map(|line| serde_json::from_str(&line.unwrap()).unwrap()).collect();
+        assert_eq!(records[0]["id"], "question-000008");
+        assert_eq!(records[0]["generated_date"], serde_json::Value::Null);
+        assert_eq!(records[0]["difficulty"], "easy");
+        assert_eq!(records[1]["id"], "question-000007");
+        assert_eq!(records[1]["difficulty"], "expert");
+        std::fs::remove_file(path).unwrap();
     }
 }
