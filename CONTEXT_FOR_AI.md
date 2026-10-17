@@ -45,7 +45,7 @@ These are code-review findings or likely edge cases, not all confirmed runtime f
 
 1. **Input validation:** the branch now rejects negative/non-finite/zero-total weights, unknown category IDs, duplicate keys, invalid worker count, out-of-range temperature/dedup threshold, and invalid prices/budget. Sampling still uses `WeightedIndex::new(...).unwrap()`, so keep validation and tests aligned if sampling code changes.
 2. **Numeric CLI validation:** validate `--workers > 0`, a sensible `--dedup-threshold` range (normally 0.0–1.0), finite/nonnegative temperature, and nonnegative finite prices/budget.
-3. **Budget race/overshoot:** the budget check occurs before concurrent batches and token totals are updated after API calls, so multiple in-flight batches may exceed the requested budget. Clarify that `--budget` is approximate or implement reservation/serialized accounting.
+3. **Budget overshoot:** the branch requires both input/output prices when `--budget` is used and serializes batches in that mode, so in-flight batches no longer race past the check. The budget remains approximate because the final in-flight batch can itself exceed the remaining amount.
 4. **HTTP/API robustness:** handle Gemini responses with no candidate due to safety blocking or finish reason; retry only transient failures and consider bounded retries/backoff for selected 5xx errors. Avoid logging sensitive API response bodies if they could include private data.
 5. **Output integrity:** test interrupted runs, write failures, `--append`, malformed existing JSONL, and dedup behavior. Current CLI exact/semantic dedup reads the entire output into memory and compares trigram sets pairwise, which can become expensive for large datasets.
 6. **Testing and CI:** this branch adds inline unit tests for parsing/validation and a GitHub Actions workflow running `cargo test --locked`. Expand coverage to JSONL serialization, API response parsing, and dedup. Consider `cargo fmt --check` after the existing file is formatted consistently.
@@ -64,8 +64,8 @@ These are code-review findings or likely edge cases, not all confirmed runtime f
 
 ## Suggested next steps
 
-1. Fix the generated README path collision first.
-2. Add input validation and regression tests.
-3. Add CI for formatting and tests.
+1. Confirm CI passes for the README-path, input-validation, batch parsing, and budget changes.
+2. Expand tests for JSONL serialization, API response parsing, and dedup.
+3. Consider `cargo fmt --check` after the existing file is formatted consistently.
 4. Keep README examples, notebook path, model defaults, and data schemas aligned with the implementation.
 5. Update this file whenever architecture, schema, or important behavior changes.
