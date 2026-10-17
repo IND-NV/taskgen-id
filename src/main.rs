@@ -806,9 +806,6 @@ fn validate_args(args: &Args) -> Result<()> {
             }
         }
     }
-    if args.input_price.is_some() != args.output_price.is_some() {
-        bail!("--input-price and --output-price must be supplied together to estimate total cost");
-    }
     if let Some(path) = &args.readme_output {
         if path == &args.output {
             bail!("--readme-output must not be the same path as --output");
