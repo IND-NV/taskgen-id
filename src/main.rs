@@ -227,6 +227,9 @@ struct Args {
     #[arg(long)]
     budget: Option<f64>,
 
+    /// Path for generated dataset metadata. Defaults to DATASET_README.md beside --output.
+    #[arg(long)]
+    readme_output: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -286,10 +289,24 @@ fn parse_distribution(input: &str) -> Result<HashMap<String, f64>> {
         let pair = pair.trim();
         let (key, val) = pair.split_once('=').context(format!("invalid distribution pair: {}", pair))?;
         let key = key.trim().to_lowercase();
+        if !["math", "coding", "science", "cs", "creative", "conversation"].contains(&key.as_str()) {
+            bail!("unknown category '{}'; available categories: math, coding, science, cs, creative, conversation", key);
+        }
         let val: f64 = val.trim().parse().context(format!("invalid weight: {}", val))?;
-        map.insert(key, val);
+        if !val.is_finite() || val < 0.0 {
+            bail!("weight for '{}' must be a finite non-negative number", key);
+        }
+        if map.insert(key.clone(), val).is_some() {
+            bail!("duplicate category '{}' in distribution", key);
+        }
+    }
+    if map.is_empty() {
+        bail!("distribution must contain at least one category");
     }
     let total: f64 = map.values().sum();
+    if !total.is_finite() || total <= 0.0 {
+        bail!("distribution weights must have a finite sum greater than zero");
+    }
     if (total - 1.0).abs() > 0.05 {
         bail!("distribution weights must sum to ~1.0, got {}", total);
     }
@@ -312,9 +329,20 @@ fn parse_difficulty(input: &str) -> Result<HashMap<u8, f64>> {
             bail!("difficulty must be 1-10, got {}", d);
         }
         let val: f64 = val.trim().parse().context(format!("invalid weight: {}", val))?;
-        map.insert(d, val);
+        if !val.is_finite() || val < 0.0 {
+            bail!("weight for difficulty {} must be a finite non-negative number", d);
+        }
+        if map.insert(d, val).is_some() {
+            bail!("duplicate difficulty level '{}' in distribution", d);
+        }
+    }
+    if map.is_empty() {
+        bail!("difficulty distribution must contain at least one level");
     }
     let total: f64 = map.values().sum();
+    if !total.is_finite() || total <= 0.0 {
+        bail!("difficulty weights must have a finite sum greater than zero");
+    }
     if (total - 1.0).abs() > 0.05 {
         bail!("difficulty weights must sum to ~1.0, got {}", total);
     }
@@ -754,9 +782,45 @@ fn generate_readme(
     md
 }
 
+fn validate_args(args: &Args) -> Result<()> {
+    if args.count == 0 {
+        bail!("--count must be greater than zero");
+    }
+    if args.workers == 0 {
+        bail!("--workers must be greater than zero");
+    }
+    if !args.temperature.is_finite() || !(0.0..=2.0).contains(&args.temperature) {
+        bail!("--temperature must be a finite number between 0.0 and 2.0");
+    }
+    if !args.dedup_threshold.is_finite() || !(0.0..=1.0).contains(&args.dedup_threshold) {
+        bail!("--dedup-threshold must be between 0.0 and 1.0");
+    }
+    for (name, value) in [
+        ("--input-price", args.input_price),
+        ("--output-price", args.output_price),
+        ("--budget", args.budget),
+    ] {
+        if let Some(value) = value {
+            if !value.is_finite() || value < 0.0 {
+                bail!("{} must be a finite non-negative number", name);
+            }
+        }
+    }
+    if args.input_price.is_some() != args.output_price.is_some() {
+        bail!("--input-price and --output-price must be supplied together to estimate total cost");
+    }
+    if let Some(path) = &args.readme_output {
+        if path == &args.output {
+            bail!("--readme-output must not be the same path as --output");
+        }
+    }
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
+    validate_args(&args)?;
 
     let api_keys: Arc<Vec<String>> = Arc::new(match &args.keyfile {
         Some(path) => {
@@ -1053,10 +1117,109 @@ async fn main() -> Result<()> {
 
     // Dataset is Indonesian-only; no language-based file splitting is performed.
     let readme = generate_readme(&args, &stats, &dist, &diff_dist);
-    let readme_path = args.output.parent().unwrap_or(std::path::Path::new(".")).join("README.md");
-    let mut rf = File::create(&readme_path).context("failed to create README.md")?;
+    let readme_path = args.readme_output.clone().unwrap_or_else(|| {
+        args.output.parent().unwrap_or(std::path::Path::new(".")).join("DATASET_README.md")
+    });
+    if readme_path == args.output {
+        bail!("generated README path must not be the same as --output");
+    }
+    let mut rf = File::create(&readme_path)
+        .with_context(|| format!("failed to create dataset README at {}", readme_path.display()))?;
     rf.write_all(readme.as_bytes())?;
-    println!("README.md written to {}", readme_path.display());
+    println!("Dataset README written to {}", readme_path.display());
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_args() -> Args {
+        Args {
+            api_key: None,
+            model: "test-model".to_string(),
+            system_prompt: None,
+            count: 1,
+            distribution: None,
+            difficulty: None,
+            temperature: 1.0,
+            workers: 1,
+            output: PathBuf::from("output.jsonl"),
+            append: false,
+            proxies: None,
+            rotating_proxy: false,
+            keyfile: None,
+            dedup: false,
+            dedup_threshold: 0.6,
+            input_price: None,
+            output_price: None,
+            budget: None,
+            readme_output: None,
+        }
+    }
+
+    #[test]
+    fn distribution_rejects_unknown_categories() {
+        assert!(parse_distribution("math=0.5,unknown=0.5").is_err());
+    }
+
+    #[test]
+    fn distribution_rejects_negative_and_non_finite_weights() {
+        assert!(parse_distribution("math=-1.0,coding=2.0").is_err());
+        assert!(parse_distribution("math=NaN").is_err());
+        assert!(parse_distribution("math=inf").is_err());
+    }
+
+    #[test]
+    fn distribution_rejects_zero_total_and_duplicate_categories() {
+        assert!(parse_distribution("math=0,coding=0").is_err());
+        assert!(parse_distribution("math=0.5,math=0.5").is_err());
+    }
+
+    #[test]
+    fn difficulty_rejects_invalid_weights_and_duplicate_levels() {
+        assert!(parse_difficulty("3=-1.0,4=2.0").is_err());
+        assert!(parse_difficulty("3=NaN").is_err());
+        assert!(parse_difficulty("3=0.5,3=0.5").is_err());
+    }
+
+    #[test]
+    fn cli_rejects_invalid_worker_temperature_threshold_and_prices() {
+        let mut args = test_args();
+        args.workers = 0;
+        assert!(validate_args(&args).is_err());
+
+        let mut args = test_args();
+        args.temperature = f64::NAN;
+        assert!(validate_args(&args).is_err());
+
+        let mut args = test_args();
+        args.dedup_threshold = 1.5;
+        assert!(validate_args(&args).is_err());
+
+        let mut args = test_args();
+        args.input_price = Some(1.0);
+        assert!(validate_args(&args).is_err());
+
+        let mut args = test_args();
+        args.budget = Some(-1.0);
+        assert!(validate_args(&args).is_err());
+    }
+
+    #[test]
+    fn cli_rejects_readme_output_collision() {
+        let mut args = test_args();
+        args.readme_output = Some(args.output.clone());
+        assert!(validate_args(&args).is_err());
+    }
+
+    #[test]
+    fn valid_distributions_are_normalized() {
+        let dist = parse_distribution("math=0.5,coding=0.5").unwrap();
+        assert!((dist["math"] - 0.5).abs() < 1e-9);
+        let difficulty = parse_difficulty("d3=0.25,7=0.75").unwrap();
+        assert!((difficulty[&3] - 0.25).abs() < 1e-9);
+        assert!((difficulty[&7] - 0.75).abs() < 1e-9);
+    }
 }
