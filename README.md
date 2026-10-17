@@ -1,64 +1,70 @@
 # TaskGen Indonesia — Gemini API
 
-TaskGen adalah generator tugas/pertanyaan untuk membuat dataset bergaya SFT. Versi ini disesuaikan agar **menggunakan Google Gemini API saja** dan mengarahkan semua tugas yang dihasilkan ke **bahasa Indonesia**.
+TaskGen Indonesia adalah generator tugas/pertanyaan untuk membangun dataset bergaya supervised fine-tuning (SFT). Implementasi generator ditulis dalam Rust dan menggunakan Google Gemini API melalui REST native. Notebook Google Colab menyediakan UI untuk menghasilkan data dan menyimpan satu dataset gabungan ke Google Drive.
+
+> **Peringatan penting:** pada kode saat ini, program CLI menulis `README.md` ke folder induk dari `--output`. Jika dijalankan dari root repository dengan output default `output.jsonl`, file README project dapat tertimpa oleh README statistik dataset. Sampai perilaku ini diperbaiki, jalankan CLI dari folder output terpisah atau gunakan output di folder khusus, misalnya `--output generated/output.jsonl` (pastikan folder `generated` sudah ada). Lihat [catatan teknis](CONTEXT_FOR_AI.md).
 
 ## Fitur
 
-- Menggunakan Gemini API native REST (`generateContent`), bukan OpenAI API dan bukan `google-genai` Python SDK.
-- API key dibaca dari variabel lingkungan `GEMINI_API_KEY`.
-- Nama model dapat dipilih saat menjalankan program dengan `--model`.
-- System prompt diterjemahkan ke bahasa Indonesia dengan logika tingkat kesulitan dan gaya pertanyaan asli tetap dipertahankan.
-- Kategori bawaan tetap dipertahankan: matematika, pemrograman, sains, ilmu komputer, kreativitas/penulisan, dan percakapan.
-- Tingkat kesulitan 1–10 dengan distribusi bawaan atau distribusi yang dapat diatur.
-- Output JSONL berisi prompt, kategori/domain, subtopik, tingkat kesulitan, bahasa (`id`), model, dan temperatur.
-- Penyimpanan bertahap ke file; hasil yang berhasil dibuat tetap ditulis meskipun tugas berikutnya gagal.
-- Retry dengan jeda bertahap untuk rate limit (`429`) dan timeout.
-- Deduplikasi opsional.
-- Notebook Google Colab untuk mengatur jumlah, kategori, level, model, dan folder Google Drive.
+- Menggunakan Gemini API native REST (`generateContent`), tanpa OpenAI API atau Python SDK `google-genai`.
+- API key dibaca dari `GEMINI_API_KEY` atau argumen CLI yang tersedia.
+- Model dapat dipilih saat menjalankan CLI; notebook mengambil daftar model yang mendukung `generateContent` dari API.
+- System prompt berbahasa Indonesia dengan penyesuaian nada/konteks dan tingkat kesulitan 1–10.
+- Enam kategori: matematika, pemrograman, sains, ilmu komputer, kreativitas/penulisan, dan percakapan.
+- Bobot kategori dan tingkat kesulitan dapat dikonfigurasi.
+- Permintaan batch dan worker paralel.
+- Retry dengan jeda bertahap untuk HTTP 429 dan timeout, serta penghentian ketika terdeteksi masalah billing.
+- Output CLI berupa JSONL, satu task per baris; notebook menggabungkan hasil ke JSON array di Google Drive.
+- Opsi deduplikasi; notebook melakukan deduplikasi teks prompt pada dataset gabungan.
+- Statistik token dan README ringkasan generasi untuk output CLI.
 
-## Kategori bawaan
+## Struktur repository
 
-| Pilihan di Colab | ID internal | Isi |
-|---|---|---|
-| Matematika | `math` | Aljabar, kalkulus, probabilitas, statistika, geometri, dan lainnya |
-| Pemrograman | `coding` | Bahasa pemrograman, pengembangan web, basis data, dan lainnya |
-| Sains | `science` | Fisika, kimia, biologi, ilmu kebumian, astronomi |
-| Ilmu komputer | `cs` | Algoritma, struktur data, sistem operasi, jaringan, machine learning, keamanan siber, dan lainnya |
-| Kreativitas dan penulisan | `creative` | Fiksi, puisi, skenario, blogging, dan lainnya |
-| Percakapan | `conversation` | Debat, saran, wawancara, pengajaran, permainan peran |
-
-Semua kategori dan subtopik dari proyek asal dipertahankan. Kategori yang dipilih akan menentukan kumpulan subtopik yang dipilih program secara acak. Label kategori/domain yang ditampilkan dalam instruksi dan metadata telah diterjemahkan bila sesuai; nama teknis seperti Python, Rust, SQL, dan istilah teknis dipertahankan.
+```text
+taskgen-id/
+├── Cargo.toml
+├── Cargo.lock
+├── README.md
+├── CONTEXT_FOR_AI.md
+├── src/
+│   └── main.rs
+└── taskgen_id.ipynb
+```
 
 ## Menjalankan di Google Colab (disarankan)
 
-1. Push repositori ini ke GitHub milikmu.
-2. Buka file `TaskGen_Indonesia_Colab.ipynb` di GitHub, lalu pilih **Open in Colab** (atau unggah notebook ke Colab).
-3. Jalankan sel secara berurutan.
-4. Masukkan URL repositori GitHub saat diminta.
-5. Simpan API key sebagai Colab Secret bernama `GEMINI_API_KEY` (disarankan), atau masukkan saat diminta. Jangan commit API key ke GitHub.
-6. Pilih jumlah tugas, kategori, tingkat kesulitan, dan model Gemini.
-7. Notebook akan membangun program Rust dan menyimpan hasil di `MyDrive/TaskGen-Indonesia/`.
+1. Buka notebook [`taskgen_id.ipynb`](taskgen_id.ipynb) di GitHub.
+2. Pilih **Open in Colab** atau unggah notebook ke Google Colab.
+3. Jalankan sel notebook. Notebook akan memasang/menghubungkan Google Drive, mengunduh branch `main`, dan membangun binary Rust.
+4. Simpan API key sebagai Colab Secret bernama `GEMINI_API_KEY`. Jika Secret tidak tersedia, notebook meminta API key melalui input tersembunyi.
+5. Pilih model, jumlah tugas, kategori, tingkat kesulitan, dan jumlah worker; lalu tekan **Generate**.
+6. Dataset gabungan disimpan ke `MyDrive/TaskGen-Indonesia/task_id.json`.
 
-Notebook mencoba mengambil daftar model yang tersedia melalui Gemini API. Kamu bisa memilih model dari daftar atau mengetik ID model sendiri. Model yang muncul belum tentu semuanya punya kuota gratis; ketersediaan dan limit bergantung pada akun Google AI Studio dan model.
+Notebook saat ini menyimpan setiap task dengan enam field inti: `prompt`, `domain`, `subdomain`, `difficulty`, `language`, dan `model`. Dataset tersebut adalah JSON array, bukan JSONL. Notebook menggunakan temperatur `1.0` dan secara default mengaktifkan deduplikasi prompt.
 
-## Menjalankan langsung di Linux
+Notebook mengkloning branch `main` dan membangun kode Rust dari repository, jadi perubahan di branch tersebut akan dipakai saat notebook dijalankan kembali. Runtime Colab bersifat sementara; simpan data penting ke Drive.
 
-Pastikan Rust/Cargo tersedia, lalu:
+## Menjalankan CLI di Linux
+
+Pastikan Rust/Cargo tersedia. Jalankan dari direktori kerja terpisah, dan jangan gunakan root repository sebagai direktori output README sampai perilaku penulisan README diperbaiki.
 
 ```bash
+git clone https://github.com/IND-NV/taskgen-id.git
+cd taskgen-id
 cargo build --release
-export GEMINI_API_KEY="API_KEY_MILIKMU"
 
-# Contoh: 100 tugas, model Flash-Lite, kategori matematika + pemrograman, level campuran
+export GEMINI_API_KEY="API_KEY_MILIKMU"
+mkdir -p generated
+
 ./target/release/taskgen \
   --count 100 \
   --model gemini-3.5-flash-lite \
   --distribution "math=0.5,coding=0.5" \
-  --output output.jsonl \
+  --output generated/output.jsonl \
   --workers 2
 ```
 
-Contoh hanya matematika dan tingkat kesulitan 7:
+Contoh hanya matematika dengan tingkat kesulitan 7:
 
 ```bash
 ./target/release/taskgen \
@@ -66,25 +72,33 @@ Contoh hanya matematika dan tingkat kesulitan 7:
   --model gemini-3.5-flash-lite \
   --distribution "math=1.0" \
   --difficulty "7=1.0" \
-  --output matematika_level7.jsonl \
+  --output generated/matematika_level7.jsonl \
   --workers 2
 ```
 
-## Opsi utama
+Pastikan direktori yang diberikan ke `--output` sudah ada. Jangan menaruh output di root repository sebelum bug penulisan README diperbaiki.
+
+## Opsi CLI utama
 
 | Opsi | Default | Keterangan |
 |---|---:|---|
 | `--count`, `-c` | `250` | Jumlah tugas yang ditargetkan |
-| `--model`, `-m` | `gemini-3.5-flash-lite` | ID model Gemini; bisa diganti setiap run |
-| `--distribution` | distribusi bawaan | Bobot kategori; total bobot harus sekitar 1.0 |
-| `--difficulty` | distribusi bawaan | Bobot level 1–10; total bobot harus sekitar 1.0 |
-| `--workers`, `-w` | `5` | Permintaan paralel; untuk kuota gratis disarankan mulai dari 1–2 |
-| `--output`, `-o` | `output.jsonl` | Lokasi file hasil |
-| `--temperature`, `-t` | `0.9` | Variasi generasi |
-| `--dedup` | mati | Jalankan deduplikasi setelah generasi |
-| `--append` | mati | Tambahkan ke file yang sudah ada |
+| `--model`, `-m` | `gemini-3.5-flash-lite` | ID model Gemini |
+| `--distribution` | Distribusi bawaan | Bobot kategori; total bobot harus mendekati 1.0 |
+| `--difficulty` | Distribusi bawaan | Bobot level 1–10; total bobot harus mendekati 1.0 |
+| `--workers`, `-w` | `5` | Batas batch yang diproses bersamaan |
+| `--output`, `-o` | `output.jsonl` | Lokasi output JSONL |
+| `--temperature`, `-t` | `1.0` | Variasi generasi |
+| `--append` | Mati | Tambahkan output ke file yang sudah ada |
+| `--dedup` | Mati | Deduplikasi exact dan kemiripan trigram setelah generasi |
+| `--dedup-threshold` | `0.6` | Ambang kemiripan deduplikasi |
+| `--system-prompt` | Prompt bawaan | Mengganti system prompt |
+| `--keyfile` | Tidak digunakan | File berisi API key, satu key per baris |
+| `--proxies` | Tidak digunakan | File daftar proxy |
+| `--input-price`, `--output-price` | Tidak digunakan | Harga per satu juta token untuk estimasi biaya |
+| `--budget` | Tidak digunakan | Batas estimasi biaya bila harga token diberikan |
 
-### ID kategori untuk `--distribution`
+### ID kategori
 
 - `math`: Matematika
 - `coding`: Pemrograman
@@ -93,27 +107,38 @@ Contoh hanya matematika dan tingkat kesulitan 7:
 - `creative`: Kreativitas dan penulisan
 - `conversation`: Percakapan
 
-Untuk memilih hanya satu kategori, gunakan bobot `1.0`, misalnya `--distribution "science=1.0"`. Untuk level tertentu, gunakan `--difficulty "4=1.0"`. Untuk level campuran, hilangkan opsi `--difficulty` agar distribusi bawaan digunakan.
+Contoh memilih satu kategori: `--distribution "science=1.0"`. Untuk level tunggal: `--difficulty "4=1.0"`.
 
-## Rate limit dan model
+## Format output
 
-Program menggunakan model yang dipilih untuk seluruh run. Jika menerima `429`, program menunggu dengan jeda bertahap dan mencoba ulang hingga batas percobaan. **Program tidak berpindah model secara otomatis**, sehingga metadata dataset tetap konsisten dan penggunaan model tidak berubah diam-diam. Jika kuota model habis, pilih model lain saat run berikutnya. Mengganti model tidak menjamin kuota tambahan.
+### CLI: JSONL
 
-Untuk mengurangi rate limit di akun gratis, mulai dari `--workers 1` atau `--workers 2`. Jangan meminta ribuan tugas sekaligus sebelum menguji 10–20 tugas. Penggunaan token bergantung pada panjang prompt dan output.
-
-## Output JSONL
-
-Satu tugas disimpan per baris, misalnya:
+Satu baris untuk setiap task:
 
 ```json
-{"prompt":"Bagaimana cara ...?","domain":"Matematika::Aljabar","subdomain":"linear_equations","difficulty":4,"language":"id","taskgen_model":"gemini-3.5-flash-lite","temperature":0.9}
+{"prompt":"Bagaimana cara ...?","domain":"Matematika::Aljabar","subdomain":"linear_equations","difficulty":4,"language":"id","model":"gemini-3.5-flash-lite"}
 ```
 
-Catatan: isi prompt diarahkan ke bahasa Indonesia, tetapi istilah teknis, nama produk, bahasa pemrograman, atau istilah yang lebih tepat dipertahankan dalam bahasa aslinya. Validasi hasil sampel tetap disarankan.
+Field yang ditulis kode Rust saat ini adalah `prompt`, `domain`, `subdomain`, `difficulty`, `language`, dan `model`. Field `language` dapat tidak ditulis jika nilainya tidak tersedia, tetapi generator saat ini mengisinya dengan `id`.
+
+### Notebook: JSON array
+
+Notebook menggabungkan hasil ke `MyDrive/TaskGen-Indonesia/task_id.json`, dengan enam field inti yang sama. Format notebook berbeda dari JSONL CLI.
+
+## Rate limit, model, dan kualitas data
+
+- Program mencoba ulang permintaan ketika menerima HTTP 429 atau timeout, sampai batas percobaan yang ditentukan kode.
+- Program tidak berpindah model otomatis. Pilih model lain secara eksplisit untuk run berikutnya jika model yang dipilih tidak tersedia atau kuotanya habis.
+- Mulai dengan 10–20 tugas dan `--workers 1` atau `--workers 2` sebelum memperbesar run.
+- Ketersediaan model, kuota, dan biaya mengikuti akun Google AI Studio/API yang digunakan.
+- Periksa sampel output sebelum digunakan untuk pelatihan. Instruksi bahasa Indonesia bukan jaminan bahwa setiap keluaran model sempurna atau faktual.
 
 ## Keamanan
 
-- Jangan pernah commit `GEMINI_API_KEY` ke GitHub.
-- Di Colab, gunakan **Secrets** dengan nama `GEMINI_API_KEY`.
-- Hasil dataset disimpan di Google Drive, bukan di repositori kode.
-- Colab menggunakan runtime sementara; file hasil yang sudah tersimpan ke Drive akan tetap ada setelah runtime berhenti.
+- Jangan commit `GEMINI_API_KEY`, file key, atau kredensial ke GitHub.
+- Gunakan Colab Secrets atau environment variable.
+- Dataset disimpan ke Google Drive oleh notebook; jangan commit dataset pribadi atau besar ke repository tanpa alasan yang jelas.
+
+## Catatan pengembangan
+
+Lihat [`CONTEXT_FOR_AI.md`](CONTEXT_FOR_AI.md) untuk ringkasan arsitektur, perilaku penting, risiko yang sudah ditemukan, dan daftar pekerjaan lanjutan agar konteks pengembangan tidak hanya bergantung pada riwayat percakapan.
