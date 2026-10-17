@@ -17,9 +17,9 @@ This file is the durable project handoff for future maintainers and AI assistant
 
 - Calls Gemini's REST `generateContent` endpoint.
 - Default model: `gemini-3.5-flash-lite`; default temperature: `1.0`.
-- Samples category/domain/subdomain and difficulty levels 1–10 from weighted distributions.
+- Samples category/domain/subdomain and one of four difficulty labels (`easy`, `medium`, `hard`, `expert`) from weighted distributions.
 - Requests up to 30 prompts per API batch and processes batches concurrently according to `--workers`.
-- Writes JSONL records with fields `prompt`, `domain`, `subdomain`, `difficulty`, `language`, and `model`.
+- Writes JSONL records in canonical field order: `id`, `generated_date`, `domain`, `subdomain`, `difficulty`, `language`, `prompt`, `model`.
 - Supports `--append`, optional exact/near-duplicate removal, API key files, proxy files, token statistics, and optional cost estimates.
 - Generates a dataset summary README in the parent directory of the `--output` file.
 
@@ -29,7 +29,7 @@ This file is the durable project handoff for future maintainers and AI assistant
 - Uses a widget UI for model, count, difficulty, categories, workers, and deduplication.
 - Fetches models from Gemini API when possible, with a fallback model ID if the list request fails.
 - Reads the CLI JSONL output, then consolidates data into one JSON array in Google Drive.
-- Normalizes notebook dataset records to six fields: `prompt`, `domain`, `subdomain`, `difficulty`, `language`, `model`.
+- Normalizes notebook dataset records to the same eight-field schema as the CLI, while storing the master dataset as a JSON array.
 - Notebook generation currently fixes temperature at `1.0`; it does not expose a temperature control.
 - Notebook's dataset format differs from the CLI format: CLI = JSONL, Colab master dataset = JSON array.
 
@@ -57,9 +57,11 @@ These are code-review findings or likely edge cases, not all confirmed runtime f
 - Generated prompts should be Indonesian (`language = "id"`), while technical names may remain in their original language.
 - The generator produces prompts/tasks, not answers.
 - Category IDs: `math`, `coding`, `science`, `cs`, `creative`, `conversation`.
-- Difficulty is an integer from 1 through 10.
+- Difficulty is one of four string labels: `easy`, `medium`, `hard`, `expert`. Legacy numeric values map as 1–3 → `easy`, 4–6 → `medium`, 7–8 → `hard`, and 9–10 → `expert`.
 - CLI output is JSONL. Notebook's master file is a JSON array.
 - Do not silently discard existing dataset records during notebook writes or schema migrations.
+- Dataset IDs use the `question-000001` pattern and continue from the highest existing numeric ID when appending.
+- `generated_date` uses `YYYY-MM-DD` for newly generated records. If a legacy record's date is unknown, keep it as JSON `null`; never infer a historical date.
 - Never place API keys or credentials in source, notebook outputs, documentation, commits, or generated artifacts.
 
 ## Suggested next steps
