@@ -72,7 +72,7 @@ Contoh hanya matematika dengan tingkat kesulitan `hard`:
   --model gemini-3.5-flash-lite \
   --distribution "math=1.0" \
   --difficulty "hard=1.0" \
-  --output generated/matematika_level7.jsonl \
+  --output generated/matematika_hard.jsonl \
   --workers 2
 ```
 
