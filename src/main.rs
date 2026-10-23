@@ -126,6 +126,7 @@ fn difficulty_label(d: u8) -> &'static str {
         _ => "Unknown",
     }
 }
+#[derive(Debug, Parser)]
 struct Args {
     #[arg(long, default_value = "https://generativelanguage.googleapis.com/v1beta/openai")]
     api_base: String,
