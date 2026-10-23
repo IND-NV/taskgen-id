@@ -1,0 +1,233 @@
+# taskgen
+
+A fast, concurrent SFT (Supervised Fine-Tuning) task generator for distillation datasets. Generates diverse, difficulty-weighted prompts across math, coding, science, computer science, creative writing, and conversational domains — via any OpenAI-compatible API.
+
+## Features
+
+- 45+ domains, 200+ subdomains across 6 categories
+- Weighted difficulty sampling (1–10 scale)
+- Configurable category distribution
+- Concurrent generation with lock-free atomic stats and pre-sampled task batches
+- Live progress bar with speed, token count, and error tracking
+- OpenAI-compatible API (works with OpenAI, Together, Mistral, local vLLM, etc.)
+- Free model discovery via OpenRouter with automatic health checks and periodic rescanning
+- Proxy support with round-robin or sticky rotation
+- Multiple API key rotation for load balancing across routers
+- Post-run deduplication (exact + semantic similarity via word-trigram Jaccard)
+- Graceful shutdown on API outages (5+ timeouts) or billing errors
+- Automatic retry with exponential backoff on rate limits (429)
+- JSONL output with metadata per task, flushed to disk after each write
+- Optional budget cap with per-token cost tracking
+- Append mode to resume interrupted runs
+- Auto-generated dataset README on completion
+
+## Install
+
+```bash
+git clone https://github.com/IND-NV/taskgen-id.git
+cd taskgen-id
+cargo build --release
+```
+
+Binary will be at `target/release/taskgen`.
+
+## Usage
+
+```bash
+taskgen [OPTIONS]
+```
+
+### Required
+
+| Flag | Env | Description |
+|---|---|---|
+| `--api-key <KEY>` | `OPENAI_API_KEY` | API key for the target provider (not needed if using `--keyfile`) |
+
+### Options
+
+| Flag | Default | Description |
+|---|---|---|
+| `--api-base <URL>` | `https://api.openai.com/v1` | API base URL |
+| `-m, --model <MODEL>` | `gpt-4o-mini` | Model to use |
+| `-c, --count <N>` | `250` | Number of tasks to generate |
+| `-w, --workers <N>` | `5` | Concurrent workers |
+| `-o, --output <FILE>` | `output.jsonl` | Output file path |
+| `-t, --temperature <F>` | `0.9` | Sampling temperature |
+| `--append` | — | Append to existing output file |
+| `--distribution <STR>` | balanced | Category weights (see below) |
+| `--difficulty <STR>` | bell curve | Difficulty weights (see below) |
+| `--multilingual` | — | Add language metadata and split output by language (currently the built-in list contains Indonesian only: `id`) |
+| `--system-prompt <STR>` | built-in | Override the system prompt |
+| `--input-price <F>` | — | Input token price per 1M tokens (for cost tracking) |
+| `--output-price <F>` | — | Output token price per 1M tokens |
+| `--budget <F>` | — | Stop starting new tasks when estimated spend reaches this USD threshold (requires both price flags; in-flight concurrent requests can exceed it) |
+
+### Proxy & Key Rotation
+
+| Flag | Default | Description |
+|---|---|---|
+| `--proxies <FILE>` | — | Proxy list file, one per line: `host:port` or `host:port:user:pass` |
+| `--rotating-proxy` | — | Use a single random proxy for all requests (sticky mode) |
+| `--keyfile <FILE>` | — | API key file, one key per line, rotated round-robin |
+
+### Free Models (OpenRouter)
+
+| Flag | Default | Description |
+|---|---|---|
+| `--free-models` | — | Auto-discover and use free models from OpenRouter |
+| `--free-rescan <MIN>` | `10` | Rescan interval in minutes for free model availability |
+
+When `--free-models` is set, taskgen will:
+1. Override `--api-base` to `https://openrouter.ai/api/v1`
+2. Fetch all available models and filter for free, text-capable models with 16k+ context
+3. Health-check each candidate with a test request (429 = live, 502/timeout = offline)
+4. Rotate verified models round-robin across tasks
+5. Track per-model failures — if a model errors 3+ times, it triggers an immediate rescan
+6. Periodically rescan on `--free-rescan` interval to pick up newly available models
+
+Each task records the actual model name in the `taskgen_model` metadata field.
+
+### Language
+
+The current built-in language list contains Indonesian only. The `--multilingual` flag currently adds language metadata and writes a per-language output file, but does not produce multiple languages until more entries are added to `LANGUAGES` in `src/main.rs`.
+
+| Code | Language |
+|---|---|
+| `id` | Indonesian |
+
+
+
+The LLM is instructed to write the task in the assigned language. A `"language"` field is added to each JSON entry's metadata. After generation (and dedup if enabled), the output is split into per-language files:
+
+```
+output_id.jsonl
+```
+
+The generated dataset README includes a language distribution table with per-language task counts.
+
+### Deduplication
+
+| Flag | Default | Description |
+|---|---|---|
+| `--dedup` | — | Run deduplication after generation |
+| `--dedup-threshold <F>` | `0.6` | Semantic similarity threshold (0.0–1.0) |
+
+Two-pass dedup:
+1. **Exact match** — normalized (lowercase, whitespace-collapsed) string comparison
+2. **Semantic match** — word-trigram Jaccard similarity, removes entries above the threshold
+
+### Error Handling
+
+- **429 Rate Limits** — exponential backoff with up to 5 retries, respects `Retry-After` header
+- **Billing Errors** (402, `insufficient_quota`, etc.) — immediate graceful shutdown
+- **Timeouts** — retries with backoff; 5 consecutive timeouts trigger graceful shutdown
+- **Graceful Shutdown** — all workers drain, completed tasks are saved, dedup runs if enabled, dataset README is written
+
+## Examples
+
+**Basic — generate 500 tasks with GPT-4o-mini:**
+```bash
+taskgen --api-key $OPENAI_API_KEY -c 500
+```
+
+**Free models via OpenRouter (no cost):**
+```bash
+taskgen --free-models --api-key $OPENROUTER_KEY -c 5000 -w 10
+```
+
+**Free models with faster rescan and dedup:**
+```bash
+taskgen --free-models --api-key $OPENROUTER_KEY -c 10000 -w 20 \
+  --free-rescan 5 --dedup --dedup-threshold 0.5
+```
+
+**Dataset with language metadata (currently Indonesian only):**
+```bash
+taskgen --api-key $OPENAI_API_KEY -c 2000 -w 10 --multilingual --dedup
+```
+
+**Local vLLM / Ollama:**
+```bash
+taskgen --api-base http://localhost:8000/v1 --api-key none -m mistral-7b-instruct -c 1000 -w 10
+```
+
+**Together AI with cost tracking and budget cap:**
+```bash
+taskgen \
+  --api-base https://api.together.xyz/v1 \
+  --api-key $TOGETHER_API_KEY \
+  -m meta-llama/Llama-3-8b-chat-hf \
+  -c 2000 -w 20 \
+  --input-price 0.20 --output-price 0.20 \
+  --budget 1.00
+```
+
+**With proxies and multiple API keys:**
+```bash
+taskgen \
+  --api-key none \
+  --keyfile keys.txt \
+  --proxies proxies.txt \
+  -c 5000 -w 20
+```
+
+**Custom distribution — 50% coding, 30% math, 20% science:**
+```bash
+taskgen --api-key $OPENAI_API_KEY --distribution "coding=0.5,math=0.3,science=0.2" -c 500
+```
+
+**Custom difficulty — only hard tasks (levels 7–10):**
+```bash
+taskgen --api-key $OPENAI_API_KEY --difficulty "7=0.25,8=0.25,9=0.25,10=0.25" -c 500
+```
+
+**Append mode — resume a previous run:**
+```bash
+taskgen --api-key $OPENAI_API_KEY -c 1000 --append -o my_dataset.jsonl
+```
+
+## Output Format
+
+Each line in the JSONL file is a self-contained task record:
+
+```json
+{
+  "prompt": "Prove that the sum of two odd integers is always even.",
+  "domain": "math::Number Theory",
+  "subdomain": "primes",
+  "difficulty": 4,
+  "language": "id",
+  "taskgen_model": "gpt-4o-mini",
+  "temperature": 0.9
+}
+```
+
+The `language` field is only present when `--multilingual` is used. A generated report named `<output-stem>_README.md` summarising run parameters, token usage, and estimated cost is written alongside the output file on completion. This avoids overwriting the project documentation. Budget stopping is approximate because concurrent requests already in flight may finish after the threshold is reached.
+
+## Domains
+
+| Category | Domains |
+|---|---|
+| `math` | Algebra, Calculus, Probability, Statistics, Geometry, Number Theory, Discrete Math, Linear Algebra |
+| `coding` | Python, Rust, Go, JavaScript, C, C++, C#, Java, Ruby, Lua, SQL, Web Development |
+| `science` | Physics, Chemistry, Biology, Earth Science, Astronomy |
+| `cs` | Algorithms, Data Structures, OS, Networking, Databases, Compilers, Distributed Systems, ML, Cybersecurity, Software Engineering |
+| `creative` | Fiction, Poetry, Screenwriting, Journalism, Songwriting, Game Narrative, Copywriting, Blogging |
+| `conversation` | Debate, Advice, Interview, Teaching, Roleplay |
+
+## Difficulty Scale
+
+| Level | Label |
+|---|---|
+| 1 | Very Easy (child-level) |
+| 2 | Easy (elementary) |
+| 3 | Basic (middle school) |
+| 4 | Intermediate (high school) |
+| 5 | Standard (undergraduate intro) |
+| 6 | Skilled (undergraduate advanced) |
+| 7 | Proficient (graduate level) |
+| 8 | Advanced (professional / researcher) |
+| 9 | Expert (top specialist) |
+| 10 | Polymath (1-in-a-million genius) |
+
+

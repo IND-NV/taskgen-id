@@ -1,0 +1,6 @@
+/target/
+/output*.jsonl
+/*_README.md
+.env
+keys.txt
+proxies.txt
