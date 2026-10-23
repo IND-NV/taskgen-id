@@ -80,7 +80,7 @@ The legacy OpenRouter free-model discovery flag remains in the CLI for compatibi
 
 ### Language
 
-Generation is Indonesian-only. The `language` field is included in every output record with the value `id`; there is no multilingual mode or `--multilingual` flag.
+Generation is Indonesian-only. The `language` field is included in every output record with the value `id`; there is no multilingual mode or `` flag.
 
 ### Deduplication
 
@@ -104,7 +104,7 @@ Two-pass dedup:
 
 **Basic — generate 500 tasks with GPT-4o-mini:**
 ```bash
-taskgen --api-key $OPENAI_API_KEY -c 500
+taskgen --api-key $GEMINI_API_KEY -c 500
 ```
 
 **Free models via OpenRouter (no cost):**
@@ -120,7 +120,7 @@ taskgen --free-models --api-key $OPENROUTER_KEY -c 10000 -w 20 \
 
 **Dataset with language metadata (currently Indonesian only):**
 ```bash
-taskgen --api-key $OPENAI_API_KEY -c 2000 -w 10 --multilingual --dedup
+taskgen --api-key $GEMINI_API_KEY -c 2000 -w 10  --dedup
 ```
 
 **Local vLLM / Ollama:**
@@ -150,17 +150,17 @@ taskgen \
 
 **Custom distribution — 50% coding, 30% math, 20% science:**
 ```bash
-taskgen --api-key $OPENAI_API_KEY --distribution "coding=0.5,math=0.3,science=0.2" -c 500
+taskgen --api-key $GEMINI_API_KEY --distribution "coding=0.5,math=0.3,science=0.2" -c 500
 ```
 
 **Custom difficulty — only hard tasks (levels 7–10):**
 ```bash
-taskgen --api-key $OPENAI_API_KEY --difficulty "7=0.25,8=0.25,9=0.25,10=0.25" -c 500
+taskgen --api-key $GEMINI_API_KEY --difficulty "7=0.25,8=0.25,9=0.25,10=0.25" -c 500
 ```
 
 **Append mode — resume a previous run:**
 ```bash
-taskgen --api-key $OPENAI_API_KEY -c 1000 --append -o my_dataset.jsonl
+taskgen --api-key $GEMINI_API_KEY -c 1000 --append -o my_dataset.jsonl
 ```
 
 ## Output Format
