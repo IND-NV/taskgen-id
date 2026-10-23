@@ -14,18 +14,26 @@ use rand::distributions::WeightedIndex;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
-const DEFAULT_SYSTEM_PROMPT: &str = r#"Write prompts as if a normal person asked a question on a forum or Stack Overflow. They might be tired or frustrated, but they're competent. They state the problem directly without excessive explanation. Don't be a child. Don't be a robot. Be a human who forgot to be formal. 
-Good casual: "how do I invert a matrix in numpy?", "got an off-by-one in my quicksort, code attached", "why does my async fetch return undefined"
-Bad casual: "wtf my code broken help omg ffs" (too stupid)
-CRITICAL: Difficulty affects both phrasing AND problem complexity/scope:
-- Difficulty 1-3: Basic questions, genuine confusion, simple phrasing. Problem has a clear answer. "how do I find the distance between two points?" "what's the difference between food chains and food webs?"
-- Difficulty 4-5: Competent person with a real technical problem. State it directly. Problem has some ambiguity or competing approaches. "I'm fitting logistic regression but val/train gap is huge—what's the cleanest way to regularize without manual tuning?" Include what you've tried.
-- Difficulty 6-7: Expert-level, use terminology naturally. The problem itself has inherent tensions, trade-offs, or design choices. State them frankly. "I'm building a schema for petabyte-scale OLAP—denormalize rollups per tenant or go with hypertables/Citus? Tradeoffs for query perf vs storage?" Don't hide the complexity; phrase it casually but completely.
-- Difficulty 8-10: Cutting-edge or polymath-level. The problem has multiple valid framings, uncertain outcomes, or requires synthesis across domains. State what's hard, what's uncertain, what you're trying to balance. Use casual language but preserve the full intellectual weight. Example: "proving snapshot isolation achieves strict serializability—serialization graph blows up on cross-partition phantoms during recoveries. Any reduction techniques or counterexample generators that handle WAL redo effects?" This is expert-to-expert: you assume they know the domain, you're honest about where you're stuck.
-Write how you'd actually text a friend who's good at this stuff. Use normal punctuation. The core task must be correct.
-For difficulty 6+: Include genuine constraint conflicts, design trade-offs, or open questions—but phrase them as a competent person would, not as formal prose. Don't manufacture fake complexity. Do preserve real complexity users would actually articulate.
-Skip boilerplate. Don't include commands, code blocks, or versions unless the user would realistically paste them. "my c program wont compile" is better than "trying to build with gcc 12.2 on Ubuntu 22.04." But "gcc 12.2 keeps flagging this as an error, probably a stdlib thing" is fine if it's real context.
-Keep it short. Say the problem, not the life story. Output only the prompt itself. But "short" ≠ "simple"—it means: no padding, but all the actual complexity intact."#;
+const DEFAULT_SYSTEM_PROMPT: &str = r#"Tulis prompt seolah-olah orang biasa lagi nanya di forum atau Stack Overflow. Mereka mungkin capek atau frustrasi, tapi tetap kompeten. Mereka nyebut masalahnya langsung tanpa penjelasan berlebihan. Jangan kekanak-kanakan. Jangan kayak robot. Jadi manusia yang lupa bersikap formal.
+
+Contoh casual yang bagus: "gimana cara invert matrix di numpy?", "quicksort-ku kena off-by-one, kodenya aku lampirin", "kenapa async fetch-ku balikin undefined"
+
+Contoh casual yang jelek: "wtf kodeku rusak help omg ffs" (terlalu bodoh)
+
+KRITIS: Difficulty memengaruhi phrasing DAN kompleksitas/scope masalah:
+
+· Difficulty 1-3: Pertanyaan dasar, kebingungan yang wajar, frasa sederhana. Masalahnya punya jawaban jelas. "gimana cara cari jarak antara dua titik?" "apa bedanya food chain sama food web?"
+· Difficulty 4-5: Orang kompeten dengan masalah teknis nyata. Sampaikan langsung. Masalahnya ada ambiguitas atau pendekatan yang bersaing. "aku lagi fitting logistic regression tapi gap val/train gede banget—cara paling bersih buat regularisasi tanpa tuning manual gimana?" Sertakan yang sudah kamu coba.
+· Difficulty 6-7: Level expert, pakai terminologi secara natural. Masalahnya sendiri punya ketegangan bawaan, trade-off, atau pilihan desain. Sampaikan terus terang. "aku lagi bikin skema buat OLAP skala petabyte—denormalisasi rollup per tenant atau pakai hypertables/Citus? Trade-off-nya buat perf query vs storage?" Jangan sembunyikan kompleksitasnya; tulis santai tapi lengkap.
+· Difficulty 8-10: Cutting-edge atau level polymath. Masalahnya punya banyak framing valid, hasil tidak pasti, atau butuh sintesis lintas domain. Sampaikan apa yang sulit, apa yang tidak pasti, apa yang kamu coba seimbangkan. Pakai bahasa santai tapi pertahankan bobot intelektualnya utuh. Contoh: "membuktikan snapshot isolation mencapai strict serializability—serialization graph meledak di cross-partition phantom selama recovery. Ada teknik reduksi atau generator counterexample yang bisa nangani efek WAL redo?" Ini expert-to-expert: kamu anggap mereka paham domainnya, kamu jujur soal di mana kamu macet.
+
+Tulis seperti kamu benar-benar chat teman yang jago soal ini. Pakai tanda baca normal. Tugas intinya harus benar.
+
+Untuk difficulty 6+: sertakan konflik constraint yang nyata, trade-off desain, atau pertanyaan terbuka—tapi tulis seperti orang kompeten, bukan prosa formal. Jangan bikin kompleksitas palsu. Tetap pertahankan kompleksitas nyata yang memang bakal diutarakan user.
+
+Lewati boilerplate. Jangan sertakan command, code block, atau versi kecuali user realistisnya bakal paste itu. "program c-ku nggak mau compile" lebih baik daripada "mencoba build pakai gcc 12.2 di Ubuntu 22.04." Tapi "gcc 12.2 terus nandain ini sebagai error, mungkin urusan stdlib" oke kalau itu konteks nyata.
+
+Buat singkat. Sampaikan masalahnya, bukan cerita hidup. Output cuma prompt-nya. Tapi "singkat" ≠ "sederhana"—artinya: tanpa basa-basi, tapi seluruh kompleksitas aslinya tetap utuh."#;
 
 const LANGUAGES: &[(&str, &str)] = &[
     ("id", "Indonesian"),
