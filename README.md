@@ -1,6 +1,6 @@
 # taskgen
 
-A fast, concurrent SFT (Supervised Fine-Tuning) task generator for distillation datasets. Generates diverse, difficulty-weighted prompts across math, coding, science, computer science, creative writing, and conversational domains — via any OpenAI-compatible API.
+A fast, concurrent SFT (Supervised Fine-Tuning) task generator for distillation datasets. Generates diverse, difficulty-weighted prompts across math, coding, science, computer science, creative writing, and conversational domains — via the Gemini API's OpenAI-compatible endpoint by default.
 
 ## Features
 
@@ -9,8 +9,8 @@ A fast, concurrent SFT (Supervised Fine-Tuning) task generator for distillation 
 - Configurable category distribution
 - Concurrent generation with lock-free atomic stats and pre-sampled task batches
 - Live progress bar with speed, token count, and error tracking
-- OpenAI-compatible API (works with OpenAI, Together, Mistral, local vLLM, etc.)
-- Free model discovery via OpenRouter with automatic health checks and periodic rescanning
+- Gemini API via the OpenAI-compatible endpoint (other compatible providers can be configured manually)
+- Gemini API support with Indonesian-only task generation
 - Proxy support with round-robin or sticky rotation
 - Multiple API key rotation for load balancing across routers
 - Post-run deduplication (exact + semantic similarity via word-trigram Jaccard)
@@ -41,14 +41,14 @@ taskgen [OPTIONS]
 
 | Flag | Env | Description |
 |---|---|---|
-| `--api-key <KEY>` | `OPENAI_API_KEY` | API key for the target provider (not needed if using `--keyfile`) |
+| `--api-key <KEY>` | `GEMINI_API_KEY` | Gemini API key (not needed if using `--keyfile`) |
 
 ### Options
 
 | Flag | Default | Description |
 |---|---|---|
-| `--api-base <URL>` | `https://api.openai.com/v1` | API base URL |
-| `-m, --model <MODEL>` | `gpt-4o-mini` | Model to use |
+| `--api-base <URL>` | `https://generativelanguage.googleapis.com/v1beta/openai` | API base URL |
+| `-m, --model <MODEL>` | `gemini-3.8-flash` | Model to use |
 | `-c, --count <N>` | `250` | Number of tasks to generate |
 | `-w, --workers <N>` | `5` | Concurrent workers |
 | `-o, --output <FILE>` | `output.jsonl` | Output file path |
@@ -56,7 +56,7 @@ taskgen [OPTIONS]
 | `--append` | — | Append to existing output file |
 | `--distribution <STR>` | balanced | Category weights (see below) |
 | `--difficulty <STR>` | bell curve | Difficulty weights (see below) |
-| `--multilingual` | — | Add language metadata and split output by language (currently the built-in list contains Indonesian only: `id`) |
+
 | `--system-prompt <STR>` | built-in | Override the system prompt |
 | `--input-price <F>` | — | Input token price per 1M tokens (for cost tracking) |
 | `--output-price <F>` | — | Output token price per 1M tokens |
@@ -70,40 +70,17 @@ taskgen [OPTIONS]
 | `--rotating-proxy` | — | Use a single random proxy for all requests (sticky mode) |
 | `--keyfile <FILE>` | — | API key file, one key per line, rotated round-robin |
 
-### Free Models (OpenRouter)
+### Gemini API and Google Colab
 
-| Flag | Default | Description |
-|---|---|---|
-| `--free-models` | — | Auto-discover and use free models from OpenRouter |
-| `--free-rescan <MIN>` | `10` | Rescan interval in minutes for free model availability |
+The default provider is Gemini via Google's OpenAI-compatible endpoint. Create a Gemini API key in Google AI Studio and store it in Colab Secrets as `GEMINI_API_KEY`; do not paste the key into the notebook or commit it to GitHub.
 
-When `--free-models` is set, taskgen will:
-1. Override `--api-base` to `https://openrouter.ai/api/v1`
-2. Fetch all available models and filter for free, text-capable models with 16k+ context
-3. Health-check each candidate with a test request (429 = live, 502/timeout = offline)
-4. Rotate verified models round-robin across tasks
-5. Track per-model failures — if a model errors 3+ times, it triggers an immediate rescan
-6. Periodically rescan on `--free-rescan` interval to pick up newly available models
+Open [TaskGen-ID-Colab.ipynb](./TaskGen-ID-Colab.ipynb) in Google Colab to run the generator from a phone. The notebook mounts Google Drive and saves generated JSONL data and its run report under `MyDrive/taskgen-id/outputs/`.
 
-Each task records the actual model name in the `taskgen_model` metadata field.
+The legacy OpenRouter free-model discovery flag remains in the CLI for compatibility, but it is not used by the Colab notebook.
 
 ### Language
 
-The current built-in language list contains Indonesian only. The `--multilingual` flag currently adds language metadata and writes a per-language output file, but does not produce multiple languages until more entries are added to `LANGUAGES` in `src/main.rs`.
-
-| Code | Language |
-|---|---|
-| `id` | Indonesian |
-
-
-
-The LLM is instructed to write the task in the assigned language. A `"language"` field is added to each JSON entry's metadata. After generation (and dedup if enabled), the output is split into per-language files:
-
-```
-output_id.jsonl
-```
-
-The generated dataset README includes a language distribution table with per-language task counts.
+Generation is Indonesian-only. The `language` field is included in every output record with the value `id`; there is no multilingual mode or `--multilingual` flag.
 
 ### Deduplication
 
@@ -197,12 +174,12 @@ Each line in the JSONL file is a self-contained task record:
   "subdomain": "primes",
   "difficulty": 4,
   "language": "id",
-  "taskgen_model": "gpt-4o-mini",
+  "taskgen_model": "gemini-3.8-flash",
   "temperature": 0.9
 }
 ```
 
-The `language` field is only present when `--multilingual` is used. A generated report named `<output-stem>_README.md` summarising run parameters, token usage, and estimated cost is written alongside the output file on completion. This avoids overwriting the project documentation. Budget stopping is approximate because concurrent requests already in flight may finish after the threshold is reached.
+The `language` field is always present and set to `id` (Indonesian). A generated report named `<output-stem>_README.md` summarising run parameters, token usage, and estimated cost is written alongside the output file on completion. This avoids overwriting the project documentation. Budget stopping is approximate because concurrent requests already in flight may finish after the threshold is reached.
 
 ## Domains
 
