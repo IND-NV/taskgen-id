@@ -1348,40 +1348,8 @@ async fn main() -> Result<()> {
         }
     }
 
-    // split output into per-language files when --multilingual is set
-    let lang_counts: Option<HashMap<String, usize>> = if multilingual && args.output.exists() {
-        println!("\nSplitting output by language...");
-        let reader = BufReader::new(File::open(&args.output)?);
-        let mut lang_buckets: HashMap<String, Vec<String>> = HashMap::new();
-
-        for line in reader.lines().flatten() {
-            let lang_code = serde_json::from_str::<serde_json::Value>(&line)
-                .ok()
-                .and_then(|v| v.get("language").and_then(|l| l.as_str().map(|s| s.to_string())))
-                .unwrap_or_else(|| "id".to_string());
-            lang_buckets.entry(lang_code).or_default().push(line);
-        }
-
-        let out_dir = args.output.parent().unwrap_or(std::path::Path::new("."));
-        let stem = args.output.file_stem().unwrap_or_default().to_string_lossy();
-        let ext = args.output.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
-
-        let counts: HashMap<String, usize> = lang_buckets.iter().map(|(k, v)| (k.clone(), v.len())).collect();
-
-        for (lang, lines) in &lang_buckets {
-            let lang_path = out_dir.join(format!("{}_{}{}", stem, lang, ext));
-            let mut f = File::create(&lang_path)?;
-            for line in lines {
-                f.write_all(line.as_bytes())?;
-                f.write_all(b"\n")?;
-            }
-            println!("  {} — {} tasks -> {}", lang, lines.len(), lang_path.display());
-        }
-
-        Some(counts)
-    } else {
-        None
-    };
+    // Generation is Indonesian-only; per-language file splitting is unnecessary.
+    let lang_counts: Option<HashMap<String, usize>> = None;
 
     let readme = generate_readme(&args, &stats, &dist, &diff_dist, lang_counts.as_ref());
     let output_stem = args.output.file_stem().unwrap_or_default().to_string_lossy();
