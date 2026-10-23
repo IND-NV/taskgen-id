@@ -127,13 +127,13 @@ fn difficulty_label(d: u8) -> &'static str {
     }
 }
 struct Args {
-    #[arg(long, default_value = "https://api.openai.com/v1")]
+    #[arg(long, default_value = "https://generativelanguage.googleapis.com/v1beta/openai")]
     api_base: String,
 
-    #[arg(long, env = "OPENAI_API_KEY")]
+    #[arg(long, env = "GEMINI_API_KEY")]
     api_key: Option<String>,
 
-    #[arg(short, long, default_value = "gpt-4o-mini")]
+    #[arg(short, long, default_value = "gemini-3.8-flash")]
     model: String,
 
     #[arg(long)]
@@ -191,9 +191,6 @@ struct Args {
     #[arg(long)]
     budget: Option<f64>,
 
-    /// Generate tasks in multiple languages (en, de, fr, es, nl, zh, ar, ru)
-    #[arg(long)]
-    multilingual: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -889,9 +886,7 @@ fn generate_readme(
     md.push_str("  \"domain\": \"math::Algebra\",\n");
     md.push_str("  \"subdomain\": \"polynomials\",\n");
     md.push_str("  \"difficulty\": 5,\n");
-    if args.multilingual {
-        md.push_str("  \"language\": \"id\",\n");
-    }
+    md.push_str("  \"language\": \"id\",\n");
     md.push_str(&format!("  \"taskgen_model\": \"{}\",\n", args.model));
     md.push_str(&format!("  \"temperature\": {}\n", args.temperature));
     md.push_str("}\n");
@@ -1026,17 +1021,11 @@ async fn main() -> Result<()> {
 
     // pre-sample all domain/difficulty/language tuples to avoid RNG contention in workers
     let mut rng = thread_rng();
-    let multilingual = args.multilingual;
     let presampled: Vec<(String, String, String, u8, Option<String>)> = (0..count)
         .map(|_| {
             let (cat, name, sub) = sample_domain(&mut rng, &pool);
             let diff = sample_difficulty(&mut rng, &diff_dist);
-            let lang = if multilingual {
-                let idx = rng.gen_range(0..LANGUAGES.len());
-                Some(LANGUAGES[idx].0.to_string())
-            } else {
-                None
-            };
+            let lang = Some("id".to_string());
             (cat, name, sub, diff, lang)
         })
         .collect();
