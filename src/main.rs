@@ -167,9 +167,6 @@ struct Args {
     output: PathBuf,
 
     #[arg(long)]
-    append: bool,
-
-    #[arg(long)]
     proxies: Option<PathBuf>,
 
     #[arg(long)]
@@ -204,14 +201,13 @@ struct Args {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TaskEntry {
-    prompt: String,
+    question: String,
+    language: String,
+    main_category: String,
     domain: String,
     subdomain: String,
-    difficulty: u8,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    language: Option<String>,
-    taskgen_model: String,
-    temperature: f64,
+    difficulty_level: u8,
+    id: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -665,10 +661,7 @@ async fn api_request(
             .get("retry-after")
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.parse::<u64>().ok());
-        let text = resp.text().await.unwrap_or_default();
-        if is_billing_error(status, &text) {
-            return Err(ApiError::Billing(text));
-        }
+        let _text = resp.text().await.unwrap_or_default();
         return Err(ApiError::RateLimit(retry_after));
     }
 
@@ -700,36 +693,31 @@ async fn api_request(
 }
 
 const MAX_RETRIES: u32 = 5;
+const MAX_RATE_LIMIT_RETRIES: u32 = 4;
 
-async fn generate_task(
+async fn generate_tasks(
     client: &reqwest::Client,
     api_base: &str,
     api_key: &str,
     model: &str,
     system_prompt: &str,
-    _category: &str,
-    domain_display: &str,
-    subdomain: &str,
-    difficulty: u8,
+    specs: &[(String, String, String, u8, Option<String>)],
     temperature: f64,
-    language: Option<&str>,
     cancel: &AtomicBool,
     consecutive_timeouts: &AtomicUsize,
     pb: &ProgressBar,
-) -> std::result::Result<(String, u64, u64), ApiError> {
-    let lang_instruction = match language {
-        Some(code) if code != "en" => {
-            let lang_name = LANGUAGES.iter().find(|(c, _)| *c == code).map(|(_, n)| *n).unwrap_or("English");
-            format!("\n\nIMPORTANT: Write the entire task/prompt in {}. Do NOT use English.", lang_name)
-        }
-        _ => String::new(),
-    };
+) -> std::result::Result<(Vec<String>, u64, u64), ApiError> {
+    let mut spec_text = String::new();
+    for (index, (category, domain_name, subdomain, difficulty, _language)) in specs.iter().enumerate() {
+        spec_text.push_str(&format!(
+            "\n{}. Main category: {}\n   Domain: {}\n   Subdomain: {}\n   Difficulty: {}/10 ({})\n",
+            index + 1, category, domain_name, subdomain, difficulty, difficulty_label(*difficulty)
+        ));
+    }
 
     let user_msg = format!(
-        "Generate a task/prompt for the following:\n\nDomain: {}\nSubdomain: {}\nDifficulty: {}/10 ({})\n\nThe task MUST be directly and specifically about the subdomain \"{}\" within {}. Do NOT generate a generic {} task — the content must focus on {} specifically.\n\nOutput only the task prompt, nothing else.{}",
-        domain_display, subdomain, difficulty, difficulty_label(difficulty),
-        subdomain, domain_display, domain_display, subdomain,
-        lang_instruction
+        "Generate exactly {} distinct task prompts for the specifications below.\n{}\nAll prompts must be written in Indonesian. Each prompt must focus specifically on its own listed subdomain and difficulty. Make the prompts distinct from each other.\n\nReturn ONLY a valid JSON array containing exactly {} strings. Do not include markdown fences, labels, or any text outside the JSON array.",
+        specs.len(), spec_text, specs.len()
     );
 
     let body = ChatRequest {
@@ -739,32 +727,44 @@ async fn generate_task(
             ChatMessage { role: "user".into(), content: user_msg },
         ],
         temperature,
-        max_tokens: Some(2048),
+        max_tokens: Some(4096),
     };
 
     let url = format!("{}/chat/completions", api_base.trim_end_matches('/'));
-
-    let mut retries = 0u32;
+    let mut rate_retries = 0u32;
+    let mut timeout_retries = 0u32;
     loop {
         if cancel.load(Ordering::Relaxed) {
             return Err(ApiError::Other(anyhow::anyhow!("cancelled")));
         }
 
-        match api_request(client, &url, api_key, &body).await {
-            Ok(result) => {
+        let api_result = api_request(client, &url, api_key, &body).await;
+        if matches!(&api_result, Err(ApiError::RateLimit(_))) {
+            pb.suspend(|| eprintln!("[RATE] API rate limit; waiting 3s before retry."));
+        }
+        // Each worker waits three seconds after every API attempt. Different workers may run concurrently.
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+
+        match api_result {
+            Ok((content, input_tokens, output_tokens)) => {
                 consecutive_timeouts.store(0, Ordering::Relaxed);
-                return Ok(result);
+                let prompts: Vec<String> = serde_json::from_str(&content)
+                    .map_err(|e| ApiError::Other(anyhow::anyhow!("failed to parse batch JSON array: {}", e)))?;
+                if prompts.len() != specs.len() || prompts.iter().any(|p| p.trim().is_empty()) {
+                    return Err(ApiError::Other(anyhow::anyhow!(
+                        "batch response expected {} non-empty questions, got {}",
+                        specs.len(), prompts.len()
+                    )));
+                }
+                return Ok((prompts, input_tokens, output_tokens));
             }
             Err(ApiError::RateLimit(retry_after)) => {
-                retries += 1;
-                if retries > MAX_RETRIES {
+                rate_retries += 1;
+                if rate_retries > MAX_RATE_LIMIT_RETRIES {
+                    cancel.store(true, Ordering::Relaxed);
+                    pb.suspend(|| eprintln!("[FATAL] API rate limit persists after {} retries; stopping generation.", MAX_RATE_LIMIT_RETRIES));
                     return Err(ApiError::RateLimit(retry_after));
                 }
-                let wait = retry_after.unwrap_or_else(|| 2u64.pow(retries).min(60));
-                pb.suspend(|| {
-                    eprintln!("[RATE] 429 hit, waiting {}s (retry {}/{})", wait, retries, MAX_RETRIES);
-                });
-                tokio::time::sleep(tokio::time::Duration::from_secs(wait)).await;
             }
             Err(ApiError::Timeout) => {
                 let count = consecutive_timeouts.fetch_add(1, Ordering::Relaxed) + 1;
@@ -775,13 +775,13 @@ async fn generate_task(
                     cancel.store(true, Ordering::Relaxed);
                     return Err(ApiError::Timeout);
                 }
-                retries += 1;
-                if retries > MAX_RETRIES {
+                timeout_retries += 1;
+                if timeout_retries > MAX_RETRIES {
                     return Err(ApiError::Timeout);
                 }
-                let wait = 2u64.pow(retries).min(30);
+                let wait = 2u64.pow(timeout_retries).min(30);
                 pb.suspend(|| {
-                    eprintln!("[TIMEOUT] request timed out, waiting {}s (retry {}/{}, {} consecutive)", wait, retries, MAX_RETRIES, count);
+                    eprintln!("[TIMEOUT] request timed out, waiting {}s (retry {}/{}, {} consecutive)", wait, timeout_retries, MAX_RETRIES, count);
                 });
                 tokio::time::sleep(tokio::time::Duration::from_secs(wait)).await;
             }
@@ -796,7 +796,6 @@ async fn generate_task(
         }
     }
 }
-
 fn count_existing_tasks(path: &PathBuf) -> usize {
     if !path.exists() {
         return 0;
@@ -891,13 +890,13 @@ fn generate_readme(
     md.push_str("Each line in the JSONL file contains:\n\n");
     md.push_str("```json\n");
     md.push_str("{\n");
-    md.push_str("  \"prompt\": \"...\",\n");
-    md.push_str("  \"domain\": \"math::Algebra\",\n");
+    md.push_str("  \"question\": \"...\",\n");
+    md.push_str("  \"language\": \"Indonesia\",\n");
+    md.push_str("  \"main_category\": \"math\",\n");
+    md.push_str("  \"domain\": \"Algebra\",\n");
     md.push_str("  \"subdomain\": \"polynomials\",\n");
-    md.push_str("  \"difficulty\": 5,\n");
-    md.push_str("  \"language\": \"id\",\n");
-    md.push_str(&format!("  \"taskgen_model\": \"{}\",\n", args.model));
-    md.push_str(&format!("  \"temperature\": {}\n", args.temperature));
+    md.push_str("  \"difficulty_level\": 5,\n");
+    md.push_str("  \"id\": \"000001\"\n");
     md.push_str("}\n");
     md.push_str("```\n\n");
 
@@ -987,16 +986,15 @@ async fn main() -> Result<()> {
 
     let system_prompt = args.system_prompt.as_deref().unwrap_or(DEFAULT_SYSTEM_PROMPT);
 
-    let existing = if args.append { count_existing_tasks(&args.output) } else { 0 };
+    let existing = count_existing_tasks(&args.output);
     if existing > 0 {
         println!("Appending to existing file with {} tasks", existing);
     }
 
-    let file = if args.append && args.output.exists() {
-        OpenOptions::new().append(true).open(&args.output)?
-    } else {
-        File::create(&args.output)?
-    };
+    let file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&args.output)?;
 
     let clients: Arc<Vec<reqwest::Client>> = Arc::new(match &args.proxies {
         Some(proxy_path) => {
@@ -1021,6 +1019,7 @@ async fn main() -> Result<()> {
     let stats = Arc::new(AtomicStats::new());
     let cancel = Arc::new(AtomicBool::new(false));
     let consecutive_timeouts = Arc::new(AtomicUsize::new(0));
+    let next_id = Arc::new(AtomicUsize::new(existing + 1));
 
     let budget = args.budget;
     let input_price = args.input_price;
@@ -1088,14 +1087,16 @@ async fn main() -> Result<()> {
         None
     };
 
-    stream::iter(0..count)
-        .for_each_concurrent(workers, |i| {
+    let batch_count = (count + 1) / 2;
+    stream::iter(0..batch_count)
+        .for_each_concurrent(workers, |batch_index| {
             let clients = clients.clone();
             let proxy_counter = proxy_counter.clone();
             let file = file.clone();
             let stats = stats.clone();
             let cancel = cancel.clone();
             let consecutive_timeouts = consecutive_timeouts.clone();
+            let next_id = next_id.clone();
             let api_base = api_base.clone();
             let api_keys = api_keys.clone();
             let key_counter = key_counter.clone();
@@ -1109,12 +1110,15 @@ async fn main() -> Result<()> {
             let pb = pb.clone();
 
             async move {
+                let start = batch_index * 2;
+                let end = (start + 2).min(count);
+                let batch_specs = presampled[start..end].to_vec();
+                let batch_size = batch_specs.len();
+
                 if cancel.load(Ordering::Relaxed) {
-                    pb.inc(1);
+                    pb.inc(batch_size as u64);
                     return;
                 }
-
-                let (ref cat, ref domain_name, ref subdomain, difficulty, ref lang) = presampled[i];
 
                 if let (Some(b), Some(ip), Some(op)) = (budget, input_price, output_price) {
                     let in_tok = stats.input_tokens.load(Ordering::Relaxed) as f64;
@@ -1122,7 +1126,7 @@ async fn main() -> Result<()> {
                     let cost = (ip * in_tok / 1_000_000.0) + (op * out_tok / 1_000_000.0);
                     if cost >= b {
                         cancel.store(true, Ordering::Relaxed);
-                        pb.inc(1);
+                        pb.inc(batch_size as u64);
                         return;
                     }
                 }
@@ -1136,63 +1140,65 @@ async fn main() -> Result<()> {
                     None => model.clone(),
                 };
 
-                let domain_display = format!("{}::{}", cat, domain_name);
                 let client_idx = proxy_counter.fetch_add(1, Ordering::Relaxed) % clients.len();
                 let client = &clients[client_idx];
                 let key_idx = key_counter.fetch_add(1, Ordering::Relaxed) % api_keys.len();
                 let api_key = &api_keys[key_idx];
 
-                match generate_task(
+                match generate_tasks(
                     client,
                     &api_base,
                     api_key,
                     &use_model,
                     &system_prompt,
-                    cat,
-                    &domain_display,
-                    subdomain,
-                    difficulty,
+                    &batch_specs,
                     temperature,
-                    lang.as_deref(),
                     &cancel,
                     &consecutive_timeouts,
                     &pb,
-                )
-                .await
-                {
-                    Ok((prompt, in_tok, out_tok)) => {
-                        if prompt.trim().is_empty() {
-                            stats.errors.fetch_add(1, Ordering::Relaxed);
-                            pb.inc(1);
-                            return;
-                        }
-                        let entry = TaskEntry {
-                            prompt,
-                            domain: format!("{}::{}", cat, domain_name),
-                            subdomain: subdomain.clone(),
-                            difficulty,
-                            language: lang.clone(),
-                            taskgen_model: use_model,
-                            temperature,
-                        };
-                        let line = serde_json::to_string(&entry).unwrap() + "\n";
+                ).await {
+                    Ok((questions, in_tok, out_tok)) => {
+                        stats.input_tokens.fetch_add(in_tok, Ordering::Relaxed);
+                        stats.output_tokens.fetch_add(out_tok, Ordering::Relaxed);
+
                         let write_result = match file.lock() {
-                            Ok(mut f) => f.write_all(line.as_bytes()).and_then(|_| f.flush()),
+                            Ok(mut f) => {
+                                let mut result = Ok(());
+                                for (question, (cat, domain_name, subdomain, difficulty, _lang)) in questions.iter().zip(batch_specs.iter()) {
+                                    let id_number = next_id.fetch_add(1, Ordering::Relaxed);
+                                    let entry = TaskEntry {
+                                        question: question.clone(),
+                                        language: "Indonesia".to_string(),
+                                        main_category: cat.clone(),
+                                        domain: domain_name.clone(),
+                                        subdomain: subdomain.clone(),
+                                        difficulty_level: *difficulty,
+                                        id: format!("{:06}", id_number),
+                                    };
+                                    let line = serde_json::to_string(&entry).unwrap() + "\n";
+                                    if let Err(e) = f.write_all(line.as_bytes()).and_then(|_| f.flush()) {
+                                        result = Err(e);
+                                        break;
+                                    }
+                                    stats.tasks.fetch_add(1, Ordering::Relaxed);
+                                }
+                                result
+                            }
                             Err(_) => Err(std::io::Error::new(
                                 std::io::ErrorKind::Other,
                                 "output file lock poisoned",
                             )),
                         };
+
                         if let Err(e) = write_result {
-                            stats.errors.fetch_add(1, Ordering::Relaxed);
+                            stats.errors.fetch_add(batch_size, Ordering::Relaxed);
                             cancel.store(true, Ordering::Relaxed);
                             pb.suspend(|| eprintln!("[FATAL] failed to write output: {}", e));
-                            pb.inc(1);
+                            pb.inc(batch_size as u64);
                             return;
                         }
-                        stats.input_tokens.fetch_add(in_tok, Ordering::Relaxed);
-                        stats.output_tokens.fetch_add(out_tok, Ordering::Relaxed);
-                        let done = stats.tasks.fetch_add(1, Ordering::Relaxed) + 1;
+
+                        let done = stats.tasks.load(Ordering::Relaxed);
                         let errs = stats.errors.load(Ordering::Relaxed);
                         let cur_in = stats.input_tokens.load(Ordering::Relaxed) as f64;
                         let cur_out = stats.output_tokens.load(Ordering::Relaxed) as f64;
@@ -1215,11 +1221,10 @@ async fn main() -> Result<()> {
                         ));
                     }
                     Err(e) => {
-                        stats.errors.fetch_add(1, Ordering::Relaxed);
+                        stats.errors.fetch_add(batch_size, Ordering::Relaxed);
                         if !cancel.load(Ordering::Relaxed) {
-                            pb.suspend(|| eprintln!("[ERROR] task {}: {}", i + 1, e));
+                            pb.suspend(|| eprintln!("[ERROR] batch {}: {}", batch_index + 1, e));
                         }
-                        // track per-model failures for free model rotation
                         if free_model_list.is_some() {
                             let tripped = model_failures.record(&use_model);
                             if tripped {
@@ -1234,10 +1239,10 @@ async fn main() -> Result<()> {
                         }
                     }
                 }
-                pb.inc(1);
+                pb.inc(batch_size as u64);
             }
         })
-        .await;
+        .await;        .await;
 
     // stop the rescan task
     if let Some(handle) = rescan_handle {
@@ -1289,7 +1294,7 @@ async fn main() -> Result<()> {
 
         for (i, entry) in entries.iter().enumerate() {
             if let Some(e) = entry {
-                let normalized: String = e.prompt.to_lowercase().split_whitespace().collect();
+                let normalized: String = e.question.to_lowercase().split_whitespace().collect();
                 if !seen.insert(normalized) {
                     keep[i] = false;
                     exact_dupes += 1;
@@ -1308,7 +1313,7 @@ async fn main() -> Result<()> {
             .map(|&i| {
                 entries[i]
                     .as_ref()
-                    .map(|e| word_trigrams(&e.prompt.to_lowercase()))
+                    .map(|e| word_trigrams(&e.question.to_lowercase()))
             })
             .collect();
 
