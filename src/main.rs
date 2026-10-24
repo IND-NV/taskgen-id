@@ -739,11 +739,15 @@ async fn generate_tasks(
         }
 
         let api_result = api_request(client, &url, api_key, &body).await;
-        if matches!(&api_result, Err(ApiError::RateLimit(_))) {
+        let final_rate_limit = matches!(&api_result, Err(ApiError::RateLimit(_)))
+            && rate_retries >= MAX_RATE_LIMIT_RETRIES;
+        if matches!(&api_result, Err(ApiError::RateLimit(_))) && !final_rate_limit {
             pb.suspend(|| eprintln!("[RATE] API rate limit; waiting 3s before retry."));
         }
         // Each worker waits three seconds after every API attempt. Different workers may run concurrently.
-        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        if !final_rate_limit {
+            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        }
 
         match api_result {
             Ok((content, input_tokens, output_tokens)) => {
