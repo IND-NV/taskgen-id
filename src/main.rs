@@ -752,7 +752,14 @@ async fn generate_tasks(
         match api_result {
             Ok((content, input_tokens, output_tokens)) => {
                 consecutive_timeouts.store(0, Ordering::Relaxed);
-                let prompts: Vec<String> = serde_json::from_str(&content)
+                let trimmed = content.trim();
+                let without_prefix = trimmed
+                    .strip_prefix("```json")
+                    .or_else(|| trimmed.strip_prefix("```"))
+                    .unwrap_or(trimmed)
+                    .trim();
+                let json_content = without_prefix.strip_suffix("```").unwrap_or(without_prefix).trim();
+                let prompts: Vec<String> = serde_json::from_str(json_content)
                     .map_err(|e| ApiError::Other(anyhow::anyhow!("failed to parse batch JSON array: {}", e)))?;
                 if prompts.len() != specs.len() || prompts.iter().any(|p| p.trim().is_empty()) {
                     return Err(ApiError::Other(anyhow::anyhow!(
