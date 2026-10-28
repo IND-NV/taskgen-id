@@ -178,7 +178,7 @@ struct Args {
     #[arg(long)]
     dedup: bool,
 
-    #[arg(long, default_value_t = 0.6)]
+    #[arg(long, default_value_t = 0.8)]
     dedup_threshold: f64,
 
     #[arg(long)]
