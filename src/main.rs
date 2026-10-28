@@ -1253,7 +1253,7 @@ async fn main() -> Result<()> {
                 pb.inc(batch_size as u64);
             }
         })
-        .await;        .await;
+        .await; 
 
     // stop the rescan task
     if let Some(handle) = rescan_handle {
