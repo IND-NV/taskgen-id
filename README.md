@@ -41,15 +41,17 @@ The output is a **JSON array** containing task objects. Each object uses these s
 Example:
 
 ```json
-{
-  "question": "Jika 2x + 5 = 15, berapakah nilai x?",
-  "language": "Indonesia",
-  "main_category": "math",
-  "domain": "Algebra",
-  "subdomain": "linear_equations",
-  "difficulty_level": 2,
-  "id": "000001"
-}
+[
+  {
+    "question": "Jika 2x + 5 = 15, berapakah nilai x?",
+    "language": "Indonesia",
+    "main_category": "math",
+    "domain": "Algebra",
+    "subdomain": "linear_equations",
+    "difficulty_level": 2,
+    "id": "000001"
+  }
+]
 ```
 
 In the actual `.json` file, all task objects are contained in one array.
