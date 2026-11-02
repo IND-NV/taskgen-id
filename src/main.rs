@@ -176,11 +176,17 @@ struct Args {
     #[arg(short, long, default_value_t = 250)]
     count: usize,
 
+    #[arg(long, value_delimiter = ',')]
+    categories: Option<Vec<String>>,
+
     #[arg(long)]
     distribution: Option<String>,
 
     #[arg(long)]
     difficulty: Option<String>,
+
+    #[arg(long, default_value_t = 2)]
+    batch_size: usize,
 
     #[arg(short, long, default_value_t = 0.9)]
     temperature: f64,
@@ -719,6 +725,7 @@ async fn api_request(
 
 const MAX_RETRIES: u32 = 5;
 const MAX_RATE_LIMIT_RETRIES: u32 = 4;
+const MAX_TRANSIENT_RETRIES: u32 = 3;
 
 async fn generate_tasks(
     client: &reqwest::Client,
@@ -758,6 +765,7 @@ async fn generate_tasks(
     let url = format!("{}/chat/completions", api_base.trim_end_matches('/'));
     let mut rate_retries = 0u32;
     let mut timeout_retries = 0u32;
+    let mut transient_retries = 0u32;
     loop {
         if cancel.load(Ordering::Relaxed) {
             return Err(ApiError::Other(anyhow::anyhow!("cancelled")));
@@ -827,6 +835,15 @@ async fn generate_tasks(
                 });
                 cancel.store(true, Ordering::Relaxed);
                 return Err(ApiError::Billing(msg));
+            }
+            Err(ApiError::Other(e)) if transient_retries < MAX_TRANSIENT_RETRIES => {
+                transient_retries += 1;
+                let wait = 2u64.pow(transient_retries).min(15);
+                pb.suspend(|| eprintln!(
+                    "[RETRY] temporary API/response failure: {}. Waiting {}s (retry {}/{})",
+                    e, wait, transient_retries, MAX_TRANSIENT_RETRIES
+                ));
+                tokio::time::sleep(tokio::time::Duration::from_secs(wait)).await;
             }
             Err(e) => return Err(e),
         }
@@ -951,6 +968,12 @@ async fn main() -> Result<()> {
     if args.workers == 0 {
         bail!("--workers must be at least 1");
     }
+    if args.batch_size == 0 {
+        bail!("--batch-size must be at least 1");
+    }
+    if args.categories.is_some() && args.distribution.is_some() {
+        bail!("use either --categories or --distribution, not both");
+    }
     if args.free_models && args.free_rescan == 0 {
         bail!("--free-rescan must be at least 1 minute");
     }
@@ -1007,9 +1030,28 @@ async fn main() -> Result<()> {
     };
     let model_counter = Arc::new(AtomicUsize::new(0));
 
-    let dist: HashMap<String, f64> = match &args.distribution {
-        Some(d) => parse_distribution(d)?,
-        None => DEFAULT_DISTRIBUTION.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
+    let dist: HashMap<String, f64> = match (&args.categories, &args.distribution) {
+        (Some(categories), None) => {
+            let mut selected = HashSet::new();
+            for category in categories {
+                let category = category.trim().to_lowercase();
+                if category.is_empty() {
+                    continue;
+                }
+                if !DOMAINS.iter().any(|d| d.category == category) {
+                    bail!("unknown category '{}'. Available: math, coding, science, cs, creative, conversation", category);
+                }
+                selected.insert(category);
+            }
+            if selected.is_empty() {
+                bail!("--categories must contain at least one category");
+            }
+            let weight = 1.0 / selected.len() as f64;
+            selected.into_iter().map(|category| (category, weight)).collect()
+        }
+        (None, Some(distribution)) => parse_distribution(distribution)?,
+        (None, None) => DEFAULT_DISTRIBUTION.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
+        (Some(_), Some(_)) => unreachable!("validated above"),
     };
 
     let diff_dist: HashMap<u8, f64> = match &args.difficulty {
@@ -1123,7 +1165,8 @@ async fn main() -> Result<()> {
         None
     };
 
-    let batch_count = (count + 1) / 2;
+    let batch_size_limit = args.batch_size;
+    let batch_count = count.div_ceil(batch_size_limit);
     stream::iter(0..batch_count)
         .for_each_concurrent(workers, |batch_index| {
             let clients = clients.clone();
@@ -1144,16 +1187,16 @@ async fn main() -> Result<()> {
             let system_prompt = system_prompt.to_string();
             let presampled = presampled.clone();
             let temperature = args.temperature;
+            let batch_size_limit = batch_size_limit;
             let pb = pb.clone();
 
             async move {
-                let start = batch_index * 2;
-                let end = (start + 2).min(count);
+                let start = batch_index * batch_size_limit;
+                let end = (start + batch_size_limit).min(count);
                 let batch_specs = presampled[start..end].to_vec();
                 let batch_size = batch_specs.len();
 
                 if cancel.load(Ordering::Relaxed) {
-                    pb.inc(batch_size as u64);
                     return;
                 }
 
@@ -1163,7 +1206,6 @@ async fn main() -> Result<()> {
                     let cost = (ip * in_tok / 1_000_000.0) + (op * out_tok / 1_000_000.0);
                     if cost >= b {
                         cancel.store(true, Ordering::Relaxed);
-                        pb.inc(batch_size as u64);
                         return;
                     }
                 }
@@ -1240,7 +1282,6 @@ async fn main() -> Result<()> {
                             stats.errors.fetch_add(batch_size, Ordering::Relaxed);
                             cancel.store(true, Ordering::Relaxed);
                             pb.suspend(|| eprintln!("[FATAL] failed to write output: {}", e));
-                            pb.inc(batch_size as u64);
                             return;
                         }
 
@@ -1265,6 +1306,8 @@ async fn main() -> Result<()> {
                             "{} ok | {} err | {}k tok{}",
                             done, errs, total_tok / 1000, cost_str
                         ));
+                        // Progress represents successfully persisted questions only.
+                        pb.inc(batch_size as u64);
                     }
                     Err(e) => {
                         stats.errors.fetch_add(batch_size, Ordering::Relaxed);
@@ -1285,7 +1328,6 @@ async fn main() -> Result<()> {
                         }
                     }
                 }
-                pb.inc(batch_size as u64);
             }
         })
         .await; 
@@ -1296,16 +1338,18 @@ async fn main() -> Result<()> {
     }
 
     let was_cancelled = cancel.load(Ordering::Relaxed);
-    if was_cancelled {
-        pb.finish_with_message("stopped early — saving progress");
-    } else {
-        pb.finish_with_message("done");
-    }
-
     let total_tasks = stats.tasks.load(Ordering::Relaxed);
     let total_errors = stats.errors.load(Ordering::Relaxed);
     let total_in = stats.input_tokens.load(Ordering::Relaxed);
     let total_out = stats.output_tokens.load(Ordering::Relaxed);
+
+    if was_cancelled {
+        pb.finish_with_message(format!("stopped early — {} / {} saved", total_tasks, count));
+    } else if total_tasks < count {
+        pb.finish_with_message(format!("incomplete — {} / {} saved", total_tasks, count));
+    } else {
+        pb.finish_with_message("done");
+    }
 
     if was_cancelled {
         println!("\nGraceful shutdown — saved {} tasks before exit", total_tasks);
