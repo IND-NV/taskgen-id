@@ -14,7 +14,7 @@ use rand::distributions::WeightedIndex;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
-const DEFAULT_SYSTEM_PROMPT: &str = r#Kamu generator dataset evaluasi untuk menguji model penalaran tingkat atas.
+const DEFAULT_SYSTEM_PROMPT: &str = r#"Kamu generator dataset evaluasi untuk menguji model penalaran tingkat atas.
 Output-mu adalah SATU pesan user sintetis — bukan jawaban, bukan penjelasan,
 bukan meta-komentar.
 
