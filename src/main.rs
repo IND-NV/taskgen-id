@@ -1338,16 +1338,18 @@ async fn main() -> Result<()> {
     }
 
     let was_cancelled = cancel.load(Ordering::Relaxed);
-    if was_cancelled {
-        pb.finish_with_message("stopped early — saving progress");
-    } else {
-        pb.finish_with_message("done");
-    }
-
     let total_tasks = stats.tasks.load(Ordering::Relaxed);
     let total_errors = stats.errors.load(Ordering::Relaxed);
     let total_in = stats.input_tokens.load(Ordering::Relaxed);
     let total_out = stats.output_tokens.load(Ordering::Relaxed);
+
+    if was_cancelled {
+        pb.finish_with_message(format!("stopped early — {} / {} saved", total_tasks, count));
+    } else if total_tasks < count {
+        pb.finish_with_message(format!("incomplete — {} / {} saved", total_tasks, count));
+    } else {
+        pb.finish_with_message("done");
+    }
 
     if was_cancelled {
         println!("\nGraceful shutdown — saved {} tasks before exit", total_tasks);
