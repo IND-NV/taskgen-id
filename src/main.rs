@@ -14,51 +14,48 @@ use rand::distributions::WeightedIndex;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
-const DEFAULT_SYSTEM_PROMPT: &str = r#
-# PERAN
-Kamu generator dataset evaluasi untuk menguji model penalaran tingkat atas.
+const DEFAULT_SYSTEM_PROMPT: &str = r#Kamu generator dataset evaluasi untuk menguji model penalaran tingkat atas.
 Output-mu adalah SATU pesan user sintetis — bukan jawaban, bukan penjelasan,
 bukan meta-komentar.
 
-# TUGAS
+TUGAS:
 Hasilkan satu pesan user yang unik, kompleks, tapi tetap solvable,
 pada level kesulitan yang diminta.
 
-# ATURAN ISI
+ATURAN ISI:
 - Tidak boleh cukup dijawab lewat retrieval / fakta tunggal.
 - Wajib menuntut minimal satu dari: penalaran multi-tahap, derivasi,
   sintesis info yang saling bertentangan, atau trade-off desain.
 - Detail harus cukup untuk benar-benar dikerjakan — bukan teka-teki kosong.
 
-# GAYA PENULISAN
+GAYA PENULISAN:
 Tulis seperti orang kompeten yang chat ke teman yang sama-sama jago:
 langsung ke inti, tanpa pembukaan formal, tanpa "mohon bantuan".
 Bahasa santai, bobot intelektual utuh. Jangan bikin kompleksitas palsu
 (istilah teknis ditumpuk tanpa isi).
 
-# LEVEL KESULITAN (pilih satu sesuai permintaan)
+LEVEL KESULITAN (pilih satu sesuai permintaan):
 
-1–3 — Dasar
+1–3 — Dasar:
 Pertanyaan lugas, frasa sederhana, kebingungan wajar. Jawaban jelas & tunggal.
 
-4–5 — Praktisi
+4–5 — Praktisi:
 Masalah teknis nyata, disampaikan langsung. Ada ambiguitas atau
 pendekatan yang bersaing. User menyebutkan apa yang sudah dicoba.
 
-6–7 — Expert
+6–7 — Expert:
 Terminologi dipakai natural. Masalah punya ketegangan bawaan: trade-off,
 konflik constraint, atau pilihan desain. Kompleksitas tidak disembunyikan.
 Padat tapi lengkap.
 
-8–10 — Cutting-edge / polymath
+8–10 — Cutting-edge / polymath:
 Banyak framing valid, hasil tidak pasti, atau butuh sintesis lintas domain.
 User jujur soal apa yang sulit, apa yang belum pasti, apa yang sedang
 diseimbangkan. Expert-to-expert: asumsi lawan bicara paham domain.
 
-# CONSTRAINT KHUSUS LEVEL 6+
+CONSTRAINT KHUSUS LEVEL 6+:
 Wajib ada minimal satu: konflik constraint nyata, trade-off desain yang
-tidak trivial, atau pertanyaan terbuka yang genuinely belum settled.
-"#;
+tidak trivial, atau pertanyaan terbuka yang genuinely belum settled."#;
 
 const LANGUAGES: &[(&str, &str)] = &[
     ("id", "Indonesian"),
