@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -163,7 +163,7 @@ struct Args {
     #[arg(short, long, default_value_t = 5)]
     workers: usize,
 
-    #[arg(short, long, default_value = "output.jsonl")]
+    #[arg(short, long, default_value = "output.json")]
     output: PathBuf,
 
     #[arg(long)]
@@ -807,15 +807,15 @@ async fn generate_tasks(
         }
     }
 }
-fn count_existing_tasks(path: &PathBuf) -> usize {
+fn load_existing_tasks(path: &PathBuf) -> Result<Vec<TaskEntry>> {
     if !path.exists() {
-        return 0;
+        return Ok(Vec::new());
     }
-    let file = File::open(path).ok();
-    match file {
-        Some(f) => BufReader::new(f).lines().filter_map(|l| l.ok()).filter(|l| !l.trim().is_empty()).count(),
-        None => 0,
-    }
+
+    let file = File::open(path)
+        .with_context(|| format!("failed to open output file: {}", path.display()))?;
+    serde_json::from_reader(file)
+        .with_context(|| format!("failed to read JSON array from {}", path.display()))
 }
 
 fn generate_readme(
@@ -898,17 +898,19 @@ fn generate_readme(
     md.push('\n');
 
     md.push_str("## Output Format\n\n");
-    md.push_str("Each line in the JSONL file contains:\n\n");
+    md.push_str("The output file contains a JSON array of task objects:\n\n");
     md.push_str("```json\n");
-    md.push_str("{\n");
-    md.push_str("  \"question\": \"...\",\n");
-    md.push_str("  \"language\": \"Indonesia\",\n");
-    md.push_str("  \"main_category\": \"math\",\n");
-    md.push_str("  \"domain\": \"Algebra\",\n");
-    md.push_str("  \"subdomain\": \"polynomials\",\n");
-    md.push_str("  \"difficulty_level\": 5,\n");
-    md.push_str("  \"id\": \"000001\"\n");
-    md.push_str("}\n");
+    md.push_str("[\n");
+    md.push_str("  {\n");
+    md.push_str("    \"question\": \"...\",\n");
+    md.push_str("    \"language\": \"Indonesia\",\n");
+    md.push_str("    \"main_category\": \"math\",\n");
+    md.push_str("    \"domain\": \"Algebra\",\n");
+    md.push_str("    \"subdomain\": \"polynomials\",\n");
+    md.push_str("    \"difficulty_level\": 5,\n");
+    md.push_str("    \"id\": \"000001\"\n");
+    md.push_str("  }\n");
+    md.push_str("]\n");
     md.push_str("```\n\n");
 
     md.push_str("---\n\n");
@@ -997,15 +999,14 @@ async fn main() -> Result<()> {
 
     let system_prompt = args.system_prompt.as_deref().unwrap_or(DEFAULT_SYSTEM_PROMPT);
 
-    let existing = count_existing_tasks(&args.output);
+    let existing_entries = load_existing_tasks(&args.output)?;
+    let existing = existing_entries.len();
     if existing > 0 {
         println!("Appending to existing file with {} tasks", existing);
     }
 
-    let file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&args.output)?;
+    let file = Arc::new(std::sync::Mutex::new(existing_entries));
+    let output_path = args.output.clone();
 
     let clients: Arc<Vec<reqwest::Client>> = Arc::new(match &args.proxies {
         Some(proxy_path) => {
@@ -1026,7 +1027,6 @@ async fn main() -> Result<()> {
     });
     let proxy_counter = Arc::new(AtomicUsize::new(0));
 
-    let file = Arc::new(std::sync::Mutex::new(file));
     let stats = Arc::new(AtomicStats::new());
     let cancel = Arc::new(AtomicBool::new(false));
     let consecutive_timeouts = Arc::new(AtomicUsize::new(0));
@@ -1104,6 +1104,7 @@ async fn main() -> Result<()> {
             let clients = clients.clone();
             let proxy_counter = proxy_counter.clone();
             let file = file.clone();
+            let output_path = output_path.clone();
             let stats = stats.clone();
             let cancel = cancel.clone();
             let consecutive_timeouts = consecutive_timeouts.clone();
@@ -1173,8 +1174,8 @@ async fn main() -> Result<()> {
                         stats.output_tokens.fetch_add(out_tok, Ordering::Relaxed);
 
                         let write_result = match file.lock() {
-                            Ok(mut f) => {
-                                let mut result = Ok(());
+                            Ok(mut entries) => {
+                                let mut result: std::io::Result<()> = Ok(());
                                 for (question, (cat, domain_name, subdomain, difficulty, _lang)) in questions.iter().zip(batch_specs.iter()) {
                                     let id_number = next_id.fetch_add(1, Ordering::Relaxed);
                                     let entry = TaskEntry {
@@ -1186,8 +1187,17 @@ async fn main() -> Result<()> {
                                         difficulty_level: *difficulty,
                                         id: format!("{:06}", id_number),
                                     };
-                                    let line = serde_json::to_string(&entry).unwrap() + "\n";
-                                    if let Err(e) = f.write_all(line.as_bytes()).and_then(|_| f.flush()) {
+                                    entries.push(entry);
+
+                                    let write_current = (|| -> std::io::Result<()> {
+                                        let json = serde_json::to_string_pretty(&*entries)
+                                            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                                        let mut output = File::create(&output_path)?;
+                                        output.write_all(json.as_bytes())?;
+                                        output.write_all(b"\n")?;
+                                        output.flush()
+                                    })();
+                                    if let Err(e) = write_current {
                                         result = Err(e);
                                         break;
                                     }
@@ -1288,28 +1298,20 @@ async fn main() -> Result<()> {
     if args.dedup && args.output.exists() {
         println!("\nRunning deduplication (threshold: {:.2})...", args.dedup_threshold);
 
-        let reader = BufReader::new(File::open(&args.output)?);
-        let mut lines: Vec<String> = Vec::new();
-        let mut entries: Vec<Option<TaskEntry>> = Vec::new();
-
-        for line in reader.lines().flatten() {
-            let entry = serde_json::from_str::<TaskEntry>(&line).ok();
-            entries.push(entry);
-            lines.push(line);
-        }
+        let file = File::open(&args.output)?;
+        let entries: Vec<TaskEntry> = serde_json::from_reader(file)
+            .context("failed to read JSON array for deduplication")?;
+        let mut keep = vec![true; entries.len()];
 
         // pass 1: exact duplicates
         let mut seen: HashSet<String> = HashSet::new();
-        let mut keep = vec![true; lines.len()];
         let mut exact_dupes = 0usize;
 
         for (i, entry) in entries.iter().enumerate() {
-            if let Some(e) = entry {
-                let normalized: String = e.question.to_lowercase().split_whitespace().collect();
-                if !seen.insert(normalized) {
-                    keep[i] = false;
-                    exact_dupes += 1;
-                }
+            let normalized: String = entry.question.to_lowercase().split_whitespace().collect();
+            if !seen.insert(normalized) {
+                keep[i] = false;
+                exact_dupes += 1;
             }
         }
 
@@ -1318,14 +1320,10 @@ async fn main() -> Result<()> {
         }
 
         // pass 2: semantic duplicates via word-trigram jaccard
-        let kept_indices: Vec<usize> = (0..lines.len()).filter(|&i| keep[i]).collect();
-        let trigrams: Vec<Option<HashSet<String>>> = kept_indices
+        let kept_indices: Vec<usize> = (0..entries.len()).filter(|&i| keep[i]).collect();
+        let trigrams: Vec<HashSet<String>> = kept_indices
             .iter()
-            .map(|&i| {
-                entries[i]
-                    .as_ref()
-                    .map(|e| word_trigrams(&e.question.to_lowercase()))
-            })
+            .map(|&i| word_trigrams(&entries[i].question.to_lowercase()))
             .collect();
 
         let mut semantic_dupes = 0usize;
@@ -1333,18 +1331,12 @@ async fn main() -> Result<()> {
             if !keep[kept_indices[j]] {
                 continue;
             }
-            let trig_b = match &trigrams[j] {
-                Some(t) => t,
-                None => continue,
-            };
+            let trig_b = &trigrams[j];
             for k in 0..j {
                 if !keep[kept_indices[k]] {
                     continue;
                 }
-                let trig_a = match &trigrams[k] {
-                    Some(t) => t,
-                    None => continue,
-                };
+                let trig_a = &trigrams[k];
                 if jaccard_similarity(trig_a, trig_b) >= args.dedup_threshold {
                     keep[kept_indices[j]] = false;
                     semantic_dupes += 1;
@@ -1359,14 +1351,13 @@ async fn main() -> Result<()> {
 
         let total_removed = exact_dupes + semantic_dupes;
         if total_removed > 0 {
-            let mut f = File::create(&args.output)?;
-            for (i, line) in lines.iter().enumerate() {
-                if keep[i] {
-                    f.write_all(line.as_bytes())?;
-                    f.write_all(b"\n")?;
-                }
-            }
-            let remaining = lines.len() - total_removed;
+            let remaining_entries: Vec<&TaskEntry> = entries.iter().enumerate()
+                .filter_map(|(i, entry)| keep[i].then_some(entry))
+                .collect();
+            let mut output = File::create(&args.output)?;
+            serde_json::to_writer_pretty(&mut output, &remaining_entries)?;
+            output.write_all(b"\n")?;
+            let remaining = remaining_entries.len();
             println!("Deduplication complete: {} removed, {} remaining", total_removed, remaining);
         } else {
             println!("No duplicates found");

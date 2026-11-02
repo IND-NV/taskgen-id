@@ -9,8 +9,8 @@ TaskGen-ID generates synthetic Indonesian questions for SFT (Supervised Fine-Tun
 - `--count` controls the total number of questions to add in a run; without retries, the number of successful API requests is `ceil(count / 2)`. For example, 5 questions normally require 3 successful requests.
 - `--workers` controls how many batches may be processed concurrently.
 - Each worker waits 3 seconds after an API attempt. If a rate limit (HTTP 429) is returned, the request is retried up to 4 times, with a 3-second wait between attempts, then generation stops if the limit persists. Different workers can still make requests concurrently.
-- Results are appended to the output file automatically; the program does not overwrite existing output. New IDs continue from the number of existing JSONL records.
-- Every completed record is flushed to disk, so completed output is retained if a run is interrupted.
+- Results are stored in a JSON array. New tasks are added to the existing array, and IDs continue from the number of existing records.
+- The JSON array is rewritten after each completed record, so completed output is retained if a run is interrupted.
 - A run report is written next to the output file as `<output-stem>_README.md`.
 
 ## Google Colab (recommended for phone users)
@@ -26,7 +26,7 @@ The notebook defaults to `COUNT = 5` and `WORKERS = 1` for a small first test. I
 
 ## Output format
 
-The output is JSON Lines (JSONL): **one JSON object per line**. Each record uses these seven fields in this order:
+The output is a **JSON array** containing task objects. Each object uses these seven fields in this order:
 
 | Field | Meaning |
 |---|---|
@@ -41,18 +41,20 @@ The output is JSON Lines (JSONL): **one JSON object per line**. Each record uses
 Example:
 
 ```json
-{
-  "question": "Jika 2x + 5 = 15, berapakah nilai x?",
-  "language": "Indonesia",
-  "main_category": "math",
-  "domain": "Algebra",
-  "subdomain": "linear_equations",
-  "difficulty_level": 2,
-  "id": "000001"
-}
+[
+  {
+    "question": "Jika 2x + 5 = 15, berapakah nilai x?",
+    "language": "Indonesia",
+    "main_category": "math",
+    "domain": "Algebra",
+    "subdomain": "linear_equations",
+    "difficulty_level": 2,
+    "id": "000001"
+  }
+]
 ```
 
-This example shows one record for readability. In the actual `.jsonl` file, each record is written on a single line.
+In the actual `.json` file, all task objects are contained in one array.
 
 ## CLI options
 
@@ -71,7 +73,7 @@ Common options:
 | `-m, --model` | `gemini-3.8-flash` | Model name |
 | `-c, --count` | `250` | Number of questions to add |
 | `-w, --workers` | `5` | Concurrent batch workers |
-| `-o, --output` | `output.jsonl` | Output JSONL path |
+| `-o, --output` | `output.json` | Output JSON array path |
 | `-t, --temperature` | `0.9` | Sampling temperature |
 | `--distribution` | Built-in balanced distribution | Category weights |
 | `--difficulty` | Built-in difficulty distribution | Difficulty weights |
@@ -101,8 +103,8 @@ Difficulty levels range from **1 (very easy)** to **10 (expert / highly advanced
 - **Rate limits (HTTP 429):** up to 4 retries, waiting 3 seconds between attempts; stops if the rate limit persists.
 - **Timeouts:** retries with backoff; 5 consecutive timeouts trigger graceful shutdown.
 - **Billing errors:** stop generation gracefully.
-- **Output writes:** each completed JSONL record is flushed to disk.
+- **Output writes:** the JSON array is saved after each completed record.
 
 ## Important note about appending
 
-Each run appends to the chosen output file and continues IDs based on the number of records already in that file. For example, if the file contains 20 records and you request 20 more, the intended total is 40 records. To start a separate dataset, use a different output filename.
+Each run adds tasks to the JSON array in the chosen output file and continues IDs based on the number of records already in that file. For example, if the file contains 20 records and you request 20 more, the intended total is 40 records. To start a separate dataset, use a different output filename.
