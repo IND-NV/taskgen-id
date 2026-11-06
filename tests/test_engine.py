@@ -1,9 +1,12 @@
+import json
+import os
+import tempfile
 import unittest
 
 from categories.registry import get_categories, get_domains
 from engine.generator import parse_weights
 from engine.sampler import build_domain_pool, sample_spec
-from engine.storage import make_record
+from engine.storage import load_records, make_record, save_records
 
 
 class CategoryTests(unittest.TestCase):
@@ -26,6 +29,24 @@ class CategoryTests(unittest.TestCase):
         record = make_record("Contoh pertanyaan", spec, 1)
         self.assertEqual(list(record), ["question", "language", "main_category", "domain", "subdomain", "difficulty_level", "id"])
         self.assertEqual(record["id"], "000001")
+
+    def test_save_load_round_trip(self):
+        record = {
+            "question": "Apa kabar?",
+            "language": "Indonesia",
+            "main_category": "conversation",
+            "domain": "Percakapan",
+            "subdomain": "santai",
+            "difficulty_level": 1,
+            "id": "000001",
+        }
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "output.json")
+            save_records(path, [record])
+            self.assertTrue(open(path, encoding="utf-8").read().endswith("\n"))
+            self.assertEqual(load_records(path), [record])
+            with open(path, encoding="utf-8") as handle:
+                json.load(handle)
 
 
 if __name__ == "__main__":
