@@ -2,7 +2,7 @@
 
 CATEGORY = {
     "id": "creative",
-    "name": "Creative",
+    "name": "Kreativitas",
     "domains": [
         {"name": "Fiction", "subdomains": ["short_story", "flash_fiction", "dialogue", "worldbuilding", "character_dev", "plot_twist"]},
         {"name": "Poetry", "subdomains": ["sonnet", "free_verse", "haiku", "narrative", "spoken_word", "lyric"]},
