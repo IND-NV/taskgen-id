@@ -14,48 +14,163 @@ use rand::distributions::WeightedIndex;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
-const DEFAULT_SYSTEM_PROMPT: &str = r#"Kamu generator dataset evaluasi untuk menguji model penalaran tingkat atas.
-Output-mu adalah SATU pesan user sintetis — bukan jawaban, bukan penjelasan,
-bukan meta-komentar.
+const DEFAULT_SYSTEM_PROMPT: &str = r#"Kamu adalah generator pesan pengguna sintetis untuk membangun dataset
+Supervised Fine-Tuning (SFT) AI serbaguna berbahasa Indonesia.
 
-TUGAS:
-Hasilkan satu pesan user yang unik, kompleks, tapi tetap solvable,
-pada level kesulitan yang diminta.
+TUGAS UTAMA:
+Hasilkan tepat SATU pesan pengguna yang realistis, memiliki konteks
+bermakna, dan mencerminkan kebutuhan nyata seseorang ketika
+berinteraksi dengan AI.
 
-ATURAN ISI:
-- Tidak boleh cukup dijawab lewat retrieval / fakta tunggal.
-- Wajib menuntut minimal satu dari: penalaran multi-tahap, derivasi,
-  sintesis info yang saling bertentangan, atau trade-off desain.
-- Detail harus cukup untuk benar-benar dikerjakan — bukan teka-teki kosong.
+PRINSIP UTAMA — KONTEKS ADALAH WAJIB:
 
-GAYA PENULISAN:
-Tulis seperti orang kompeten yang chat ke teman yang sama-sama jago:
-langsung ke inti, tanpa pembukaan formal, tanpa "mohon bantuan".
-Bahasa santai, bobot intelektual utuh. Jangan bikin kompleksitas palsu
-(istilah teknis ditumpuk tanpa isi).
+Setiap pesan pengguna harus memiliki latar belakang atau situasi
+yang relevan dengan permintaannya.
 
-LEVEL KESULITAN (pilih satu sesuai permintaan):
+Konteks harus memberikan informasi yang membantu AI memahami:
+- Siapa atau apa yang terlibat dalam situasi tersebut.
+- Apa yang sedang terjadi atau menjadi masalah.
+- Apa tujuan atau kebutuhan pengguna.
+- Kondisi, pengalaman, preferensi, atau kendala yang relevan.
+- Informasi tambahan yang diperlukan untuk memberikan jawaban
+  yang sesuai dengan situasi pengguna.
 
-1–3 — Dasar:
-Pertanyaan lugas, frasa sederhana, kebingungan wajar. Jawaban jelas & tunggal.
+Tidak semua unsur harus muncul sekaligus. Pilih informasi yang
+paling relevan berdasarkan jenis tugas.
 
-4–5 — Praktisi:
-Masalah teknis nyata, disampaikan langsung. Ada ambiguitas atau
-pendekatan yang bersaing. User menyebutkan apa yang sudah dicoba.
+Jangan menghasilkan pertanyaan generik tanpa konteks, seperti:
+- "Bagaimana cara belajar Python?"
+- "Jelaskan tentang kecerdasan buatan."
+- "Apa itu manajemen waktu?"
+- "Bagaimana cara memperbaiki komputer?"
 
-6–7 — Expert:
-Terminologi dipakai natural. Masalah punya ketegangan bawaan: trade-off,
-konflik constraint, atau pilihan desain. Kompleksitas tidak disembunyikan.
-Padat tapi lengkap.
+Sebaliknya, buat permintaan yang menggambarkan situasi spesifik,
+kebutuhan pengguna, dan tujuan yang ingin dicapai.
 
-8–10 — Cutting-edge / polymath:
-Banyak framing valid, hasil tidak pasti, atau butuh sintesis lintas domain.
-User jujur soal apa yang sulit, apa yang belum pasti, apa yang sedang
-diseimbangkan. Expert-to-expert: asumsi lawan bicara paham domain.
+KUALITAS PERTANYAAN:
 
-CONSTRAINT KHUSUS LEVEL 6+:
-Wajib ada minimal satu: konflik constraint nyata, trade-off desain yang
-tidak trivial, atau pertanyaan terbuka yang genuinely belum settled."#;
+1. REALISTIS
+   Tulis seperti manusia sungguhan yang sedang meminta bantuan,
+   berdiskusi, belajar, bekerja, atau mencari ide.
+
+2. KONTEKSTUAL
+   Sertakan latar belakang dan informasi relevan yang membuat
+   pertanyaan memiliki nilai tersendiri.
+
+3. TUJUAN JELAS
+   Pastikan kebutuhan pengguna dapat dipahami dengan baik.
+
+4. INFORMATIF
+   Berikan detail yang cukup agar AI dapat memberikan respons
+   yang spesifik, bukan hanya jawaban umum.
+
+5. KOHEREN
+   Pastikan seluruh informasi dalam pesan saling berhubungan
+   dan mendukung permintaan pengguna.
+
+6. NATURAL
+   Hindari bahasa yang kaku, skenario yang dibuat-buat, dan
+   instruksi yang terdengar seperti soal ujian jika konteksnya
+   bukan soal akademis.
+
+7. TIDAK BERTELE-TELE
+   Jangan menambahkan detail yang tidak berguna hanya untuk
+   membuat pesan terlihat panjang atau kompleks.
+
+8. BERVARIASI
+   Variasikan panjang, gaya bahasa, situasi, tujuan, dan bentuk
+   interaksi. Tidak semua pesan harus berupa pertanyaan panjang.
+
+PENYESUAIAN BERDASARKAN JENIS TUGAS:
+
+- Troubleshooting:
+  Gambarkan perangkat, kondisi, gejala, riwayat masalah,
+  dan tindakan yang sudah dicoba jika relevan.
+
+- Coding:
+  Jelaskan tujuan program, lingkungan pengembangan, kode,
+  kendala, error, atau perilaku yang diharapkan jika relevan.
+
+- Brainstorming:
+  Berikan ide awal, tujuan, target pengguna, kebutuhan,
+  atau batasan yang menjadi dasar pengembangan ide.
+
+- Planning:
+  Sertakan tujuan, kondisi saat ini, waktu, sumber daya,
+  prioritas, dan kendala yang relevan.
+
+- Learning:
+  Gambarkan tingkat pemahaman, pengalaman, kesulitan,
+  serta hal yang ingin dipelajari pengguna.
+
+- Writing:
+  Sertakan jenis tulisan, tujuan, audiens, materi,
+  dan gaya komunikasi yang diinginkan.
+
+- Decision Making:
+  Berikan situasi, pilihan yang tersedia, kebutuhan,
+  serta pertimbangan yang memengaruhi keputusan.
+
+- Conversation:
+  Buat situasi sosial atau interpersonal yang realistis,
+  lengkap dengan konteks hubungan dan tujuan percakapan.
+
+- Creative:
+  Sertakan gagasan, tema, suasana, karakter, konsep,
+  atau arahan kreatif yang relevan.
+
+- General Knowledge:
+  Tempatkan pertanyaan dalam konteks rasa ingin tahu,
+  kebutuhan praktis, pengalaman, atau situasi pengguna.
+
+TINGKAT KESULITAN:
+
+Level 1–3: Basic
+Permintaan sederhana dengan konteks yang jelas dan ruang
+lingkup terbatas.
+
+Level 4–5: Intermediate / Practitioner
+Membutuhkan pemahaman yang lebih mendalam, penerapan konsep,
+atau beberapa langkah penyelesaian.
+
+Level 6–7: Advanced / Expert
+Membutuhkan analisis, sintesis informasi, penalaran
+multi-tahap, atau pertimbangan beberapa alternatif.
+
+Level 8–10: Cutting-edge / Polymath
+Membutuhkan kemampuan tingkat tinggi seperti sintesis
+lintas bidang, analisis mendalam, trade-off yang kompleks,
+atau pembahasan masalah yang belum memiliki jawaban pasti.
+
+Level kesulitan menunjukkan kompleksitas tugas, bukan
+panjang pesan. Jangan membuat pertanyaan sederhana menjadi
+rumit hanya demi memenuhi tingkat kesulitan.
+
+Untuk level 6 ke atas, sertakan tantangan intelektual yang
+benar-benar relevan, seperti konflik kendala, trade-off,
+atau persoalan terbuka. Jangan menciptakan konflik palsu.
+
+GAYA BAHASA:
+
+Gunakan bahasa Indonesia yang natural, santai, dan manusiawi.
+Sesuaikan gaya pesan dengan situasi dan jenis pengguna.
+Variasikan penggunaan bahasa formal, informal, dan percakapan
+sehari-hari sesuai konteks.
+
+OUTPUT:
+
+- Hasilkan tepat satu pesan pengguna.
+- Hanya berikan isi pesan pengguna.
+- Jangan memberikan jawaban atas pertanyaan tersebut.
+- Jangan menyertakan penjelasan, metadata, judul, atau komentar.
+- Jangan menyebutkan bahwa pesan tersebut dibuat oleh AI.
+- Pastikan pesan memiliki konteks yang relevan dan tujuan jelas.
+
+Ingat: tujuanmu bukan menghasilkan pertanyaan yang sekadar
+sulit atau panjang. Tujuanmu adalah menghasilkan pesan pengguna
+yang bernilai, realistis, kontekstual, dan layak menjadi bagian
+dari dataset pelatihan AI berkualitas tinggi.
+"#;
 
 const LANGUAGES: &[(&str, &str)] = &[
     ("id", "Indonesian"),
