@@ -30,6 +30,22 @@ def build_parser():
 def main():
     parser = build_parser()
     args = parser.parse_args()
+    if len(sys.argv) == 1:
+        print("\\n=== TaskGen-ID | Python ===")
+        print("Mode interaktif (aman untuk Termux / RAM kecil)")
+        try:
+            raw = input("Jumlah pertanyaan [10]: ").strip()
+            args.count = int(raw) if raw else 10
+            raw = input("Worker [1]: ").strip()
+            args.workers = int(raw) if raw else 1
+            raw = input("Batch per request [2]: ").strip()
+            args.batch_size = int(raw) if raw else 2
+            raw = input("Kategori (kosong = semua) [math,coding,science,cs,creative,conversation]: ").strip()
+            args.categories = raw or None
+            raw = input("Nama file output [output.json]: ").strip()
+            args.output = raw or "output.json"
+        except (ValueError, EOFError):
+            print("Input tidak valid."); return 2
     if not args.api_key:
         args.api_key = getpass.getpass("Gemini API key: ").strip()
     distribution = parse_weights(args.distribution) if args.distribution else None
