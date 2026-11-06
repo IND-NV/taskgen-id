@@ -20,12 +20,19 @@ def build_domain_pool(distribution=None):
             subdomains = domain["subdomains"]
             weight = category_weight / len(cat_domains) / len(subdomains)
             for subdomain in subdomains:
-                pool.append((category, domain["name"], subdomain, weight))
+                pool.append((domain["category_name"], domain["name"], subdomain, weight))
     return pool
 
 
 def sample_spec(pool, difficulty=None):
     difficulty = difficulty or DEFAULT_DIFFICULTY
-    category, domain, subdomain, _ = _weighted_choice(pool, [x[3] for x in pool])
+    category, domain, subdomain, _ = _weighted_choice(
+        pool, [item[3] for item in pool]
+    )
     level = _weighted_choice(list(difficulty), list(difficulty.values()))
-    return {"main_category": category, "domain": domain, "subdomain": subdomain, "difficulty_level": level}
+    return {
+        "main_category": category,
+        "domain": domain,
+        "subdomain": subdomain,
+        "difficulty_level": level,
+    }

@@ -33,5 +33,10 @@ def save_records(path, records):
 
 
 def make_record(question, spec, record_id):
-    record = {"question": question.strip(), "language": "Indonesia", **spec, "id": f"{record_id:06d}"}
+    record = {
+        "question": question.strip(),
+        "language": "Indonesia",
+        **spec,
+        "id": f"{record_id:06d}",
+    }
     return {field: record[field] for field in FIELDS}
