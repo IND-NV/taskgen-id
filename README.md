@@ -57,6 +57,10 @@ taskgen-id/
 
 Untuk menambah kategori, buat modul baru di `categories/` dengan variabel `CATEGORY`, lalu daftarkan di `categories/registry.py`.
 
+## Bahasa keluaran
+
+Isi pertanyaan yang dihasilkan diwajibkan menggunakan bahasa Indonesia, bukan campuran Indonesia-Inggris. Istilah teknis, nama produk, nama perangkat lunak, dan potongan kode boleh dipertahankan jika memang perlu. Nama kategori/domain dan nama kolom JSON tetap menjadi penanda internal agar format data stabil.
+
 ## Fitur engine
 
 - Endpoint kompatibel OpenAI Chat Completions (default Gemini).
