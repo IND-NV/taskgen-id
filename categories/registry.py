@@ -1,9 +1,4 @@
-"""Registry kategori bawaan TaskGen-ID.
-
-Untuk menambah kategori bawaan, buat modul baru di folder ini lalu
-daftarkan modulnya di BUILTIN_CATEGORIES. Tahap auto-discovery akan
-ditambahkan setelah struktur dasar ini diuji.
-"""
+"""Registry kategori bawaan TaskGen-ID."""
 
 from .coding import CATEGORY as CODING
 from .conversation import CATEGORY as CONVERSATION
@@ -21,6 +16,7 @@ BUILTIN_CATEGORIES = (
     CONVERSATION,
 )
 
+# ID internal tetap stabil untuk konfigurasi, distribusi, dan CLI.
 DEFAULT_DISTRIBUTION = {
     "math": 0.25,
     "coding": 0.25,
@@ -32,12 +28,12 @@ DEFAULT_DISTRIBUTION = {
 
 
 def get_categories():
-    """Kembalikan kategori bawaan berdasarkan ID."""
+    """Kembalikan kategori bawaan berdasarkan ID internal."""
     return {category["id"]: category for category in BUILTIN_CATEGORIES}
 
 
 def get_domains(category_ids=None):
-    """Kembalikan domain kategori, opsional dibatasi oleh ID kategori."""
+    """Kembalikan domain dan label kategori dalam bahasa Indonesia."""
     selected = set(category_ids) if category_ids is not None else None
     result = []
     for category in BUILTIN_CATEGORIES:
@@ -46,6 +42,7 @@ def get_domains(category_ids=None):
         for domain in category["domains"]:
             result.append({
                 "category": category["id"],
+                "category_name": category["name"],
                 "name": domain["name"],
                 "subdomains": list(domain["subdomains"]),
             })
