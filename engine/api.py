@@ -37,11 +37,11 @@ def chat_completion(api_base, api_key, model, messages, temperature=0.9, timeout
 
 def generate_batch(api_base, api_key, model, system_prompt, specs, temperature=0.9, retries=4, delay=3):
     spec_lines = []
-    labels = {1:"Very Easy",2:"Easy",3:"Basic",4:"Intermediate",5:"Standard",6:"Skilled",7:"Proficient",8:"Advanced",9:"Expert",10:"Polymath"}
+    labels = {1:"Sangat Mudah",2:"Mudah",3:"Dasar",4:"Menengah",5:"Standar",6:"Terampil",7:"Mahir",8:"Lanjut",9:"Ahli",10:"Sangat Ahli"}
     for i, spec in enumerate(specs, 1):
         level = spec["difficulty_level"]
-        spec_lines.append(f"{i}. Main category: {spec['main_category']}\n   Domain: {spec['domain']}\n   Subdomain: {spec['subdomain']}\n   Difficulty: {level}/10 ({labels[level]})")
-    user_prompt = (f"Generate exactly {len(specs)} distinct task prompts for these specifications:\n" + "\n".join(spec_lines) + "\nAll prompts must be in Indonesian. Each must focus on its own subdomain and difficulty. Return ONLY a valid JSON array containing exactly that many strings.")
+        spec_lines.append(f"{i}. Kategori utama: {spec['main_category']}\n   Bidang: {spec['domain']}\n   Subbidang: {spec['subdomain']}\n   Tingkat kesulitan: {level}/10 ({labels[level]})")
+    user_prompt = (f"Buat tepat {len(specs)} pesan pengguna yang berbeda berdasarkan spesifikasi berikut:\n" + "\n".join(spec_lines) + "\nWAJIB: seluruh pesan harus sepenuhnya menggunakan bahasa Indonesia, bukan campuran Indonesia-Inggris. Jangan menyalin label kategori atau bidang yang berbahasa Inggris ke dalam pesan; pahami maknanya dan tulis secara alami dalam bahasa Indonesia. Setiap pesan harus sesuai dengan subbidang dan tingkat kesulitannya sendiri. Keluarkan HANYA larik JSON valid yang berisi tepat sejumlah string tersebut, tanpa teks tambahan.")
     messages = [{"role":"system","content":system_prompt},{"role":"user","content":user_prompt}]
     for attempt in range(retries + 1):
         try:
