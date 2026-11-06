@@ -27,8 +27,8 @@ def generate_batch(api_base, keyring, model, system_prompt, specs, temperature=0
     spec_lines = []
     for i, spec in enumerate(specs, 1):
         level = spec["difficulty_level"]
-        spec_lines.append(f"{i}. Kategori: {spec['main_category']}\\n   Bidang: {spec['domain']}\\n   Subbidang: {spec['subdomain']}\\n   Kesulitan: {level}/10 ({labels[level]})")
-    user_prompt = (f"Buat tepat {len(specs)} pesan pengguna yang berbeda berdasarkan spesifikasi berikut:\\n" + "\\n".join(spec_lines) + "\\nWAJIB: seluruh pesan harus sepenuhnya menggunakan bahasa Indonesia, bukan campuran Indonesia-Inggris. Jangan menyalin label kategori atau bidang yang berbahasa Inggris ke dalam pesan; pahami maknanya dan tulis secara alami dalam bahasa Indonesia. Keluarkan HANYA larik JSON valid berisi tepat jumlah pesan tersebut, tanpa teks tambahan.")
+        spec_lines.append(f"{i}. Kategori: {spec['main_category']}\n   Bidang: {spec['domain']}\n   Subbidang: {spec['subdomain']}\n   Kesulitan: {level}/10 ({labels[level]})")
+    user_prompt = (f"Buat tepat {len(specs)} pesan pengguna yang berbeda berdasarkan spesifikasi berikut:\n" + "\n".join(spec_lines) + "\nWAJIB: seluruh pesan harus sepenuhnya menggunakan bahasa Indonesia, bukan campuran Indonesia-Inggris. Jangan menyalin label kategori atau bidang yang berbahasa Inggris ke dalam pesan; pahami maknanya dan tulis secara alami dalam bahasa Indonesia. Keluarkan HANYA larik JSON valid berisi tepat jumlah pesan tersebut, tanpa teks tambahan.")
     messages = [{"role":"system","content":system_prompt},{"role":"user","content":user_prompt}]
     last_error = None
     for attempt in range(retries + 1):
@@ -37,7 +37,7 @@ def generate_batch(api_base, keyring, model, system_prompt, specs, temperature=0
                 content, input_tokens, output_tokens = provider.chat_completion(api_base, api_key, model, messages, temperature)
                 clean = content.strip()
                 if clean.startswith("```"):
-                    clean = clean.split("\\n", 1)[-1].rsplit("```", 1)[0].strip()
+                    clean = clean.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
                 prompts = json.loads(clean)
                 if not isinstance(prompts, list) or len(prompts) != len(specs) or any(not isinstance(p, str) or not p.strip() for p in prompts):
                     raise APIError(f"Respons harus berupa array berisi {len(specs)} teks tidak kosong.")
