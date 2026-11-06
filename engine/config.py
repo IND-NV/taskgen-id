@@ -1,6 +1,6 @@
 """Konfigurasi dan nilai bawaan TaskGen-ID."""
 DEFAULT_API_BASE = "https://generativelanguage.googleapis.com/v1beta/openai"
-DEFAULT_MODEL = "gemini-3.8-flash"
+DEFAULT_MODEL = None
 DEFAULT_TEMPERATURE = 0.9
 DEFAULT_BATCH_SIZE = 2
 DEFAULT_WORKERS = 1
@@ -23,5 +23,5 @@ Tingkat kesulitan: 1-3 sangat mudah hingga dasar; 4-5 menengah; 6-7 mahir hingga
 
 Hasilkan tepat satu pesan pengguna untuk setiap spesifikasi. Hanya keluarkan isi pesan pengguna. Jangan menjawab pertanyaan, menambah metadata, judul, komentar, atau menyebut bahwa pesan dibuat oleh AI. Pastikan setiap pesan sepenuhnya berbahasa Indonesia."""
 DEFAULT_DIFFICULTY = {1: .05, 2: .05, 3: .10, 4: .15, 5: .20, 6: .15, 7: .10, 8: .08, 9: .07, 10: .05}
-DIFFICULTY_LABELS = {1:"Sangat Mudah",2:"Mudah",3:"Dasar",4:"Menengah",5:"Standar",6:"Terampil",7:"Mahir",8:"Lanjut",9:"Ahli",10:"Sangat Ahli"}
+DIFFICULTY_LABELS = {1: "Sangat Mudah", 2: "Mudah", 3: "Dasar", 4: "Menengah", 5: "Standar", 6: "Terampil", 7: "Mahir", 8: "Lanjut", 9: "Ahli", 10: "Sangat Ahli"}
 API_KEY_ENV = "GEMINI_API_KEY"
