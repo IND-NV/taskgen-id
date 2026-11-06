@@ -60,11 +60,11 @@ Setiap penyedia ditempatkan pada berkas terpisah di `providers/`. Saat ini hanya
 
 ## Menambah kategori
 
-Buat modul baru di `categories/` dengan variabel `CATEGORY`, lalu daftarkan di `categories/registry.py`. ID internal seperti `math` dan `coding` sengaja dipertahankan agar stabil; nama kategori yang ditampilkan kepada pengguna sudah menggunakan bahasa Indonesia.
+Buat modul baru di `categories/` dengan variabel `CATEGORY`, lalu daftarkan di `categories/registry.py`. ID internal seperti `math` dan `coding` sengaja dipertahankan agar konfigurasi dan CLI tetap stabil. Nama kategori, domain, dan subdomain yang masuk ke dataset menggunakan bahasa Indonesia.
 
-## Bahasa keluaran
+## Bahasa keluaran dan metadata
 
-Isi pertanyaan yang dihasilkan diwajibkan menggunakan bahasa Indonesia, bukan campuran Indonesia-Inggris. Istilah teknis, nama produk, nama perangkat lunak, dan potongan kode boleh dipertahankan jika memang perlu. Nama kategori/domain dan nama kolom JSON tetap menjadi penanda internal agar format data stabil.
+Isi pertanyaan dan nilai metadata kategori/domain/subdomain menggunakan bahasa Indonesia. Nama produk, bahasa pemrograman, protokol, singkatan baku, serta istilah teknis yang tidak memiliki padanan wajar boleh tetap dalam bentuk aslinya. Nama kolom JSON tetap menggunakan bahasa Inggris agar skema dataset stabil.
 
 ## Fitur
 
@@ -73,14 +73,14 @@ Isi pertanyaan yang dihasilkan diwajibkan menggunakan bahasa Indonesia, bukan ca
 - Beberapa API key dalam satu sesi, dengan pergantian otomatis saat terkena 401, 403, atau 429.
 - API key tidak disimpan ke konfigurasi maupun hasil dataset.
 - Batch kecil dan worker yang dapat diatur; gunakan 1 worker dan batch 2 di ponsel.
-- Penyimpanan JSON atomik setelah setiap record selesai.
+- Penyimpanan JSON atomik setelah setiap batch berhasil.
 - ID berurutan enam digit.
 - Distribusi kategori dan tingkat kesulitan yang dapat diatur.
 - Prompt sistem dapat diganti dari berkas.
 
 ## Format keluaran
 
-JSON array dengan tujuh field: `question`, `language`, `main_category`, `domain`, `subdomain`, `difficulty_level`, dan `id`.
+JSON array dengan tujuh field: `question`, `language`, `main_category`, `domain`, `subdomain`, `difficulty_level`, dan `id`. Nilai `main_category`, `domain`, dan `subdomain` menggunakan label Indonesia.
 
 ## Catatan
 
