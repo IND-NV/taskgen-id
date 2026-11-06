@@ -31,7 +31,7 @@ def main():
     parser = build_parser()
     args = parser.parse_args()
     if len(sys.argv) == 1:
-        print("\\n=== TaskGen-ID | Python ===")
+        print("\n=== TaskGen-ID | Python ===")
         print("Mode interaktif (aman untuk Termux / RAM kecil)")
         try:
             raw = input("Jumlah pertanyaan [10]: ").strip()
@@ -60,7 +60,7 @@ def main():
     try:
         stats = run_generation(count=args.count, api_key=args.api_key, api_base=args.api_base, model=args.model, output=args.output, workers=args.workers, batch_size=args.batch_size, temperature=args.temperature, categories=categories, distribution=distribution, difficulty=difficulty, system_prompt=prompt, delay=args.delay)
     except KeyboardInterrupt:
-        print("\\nDihentikan pengguna."); return 130
+        print("\nDihentikan pengguna."); return 130
     except Exception as exc:
         print(f"[FATAL] {exc}", file=sys.stderr); return 1
     print(f"Selesai: {stats['done']} pertanyaan | error: {stats['errors']} | token masuk/keluar: {stats['input_tokens']}/{stats['output_tokens']}")
