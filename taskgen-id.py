@@ -2,7 +2,6 @@
 """TaskGen-ID — CLI interaktif, tanpa dependensi pihak ketiga."""
 import argparse
 import getpass
-import os
 import sys
 from categories.registry import get_categories
 from engine.config import DEFAULT_API_BASE, DEFAULT_MODEL, DEFAULT_WORKERS
@@ -51,7 +50,7 @@ def choose_model(api_base, api_key, supplied=None):
     provider = get_provider("gemini")
     try:
         models = provider.list_models(api_base, api_key)
-    except Exception as exc:
+    except provider.GeminiError as exc:
         print(f"Tidak bisa mengambil daftar model: {exc}")
         models = []
     if models:
@@ -68,7 +67,10 @@ def choose_model(api_base, api_key, supplied=None):
             elif choice.isdigit() and 1 <= int(choice) <= len(models):
                 return models[int(choice) - 1]
             print("Pilihan tidak valid.")
-    return input(f"Nama model Gemini [{DEFAULT_MODEL}]: ").strip() or DEFAULT_MODEL
+    manual = input("Nama model Gemini: ").strip()
+    if not manual:
+        raise ValueError("Nama model Gemini wajib diisi.")
+    return manual
 
 
 def main():
@@ -121,19 +123,11 @@ def main():
     print(f"Model: {model} | jumlah key aktif: {len(keys)}")
     try:
         stats = run_generation(
-            count=args.count,
-            api_keys=keys,
-            api_base=args.api_base,
-            model=model,
-            output=args.output,
-            workers=args.workers,
-            batch_size=args.batch_size,
-            temperature=args.temperature,
-            categories=categories,
-            distribution=distribution,
-            difficulty=difficulty,
-            system_prompt=prompt,
-            delay=args.delay,
+            count=args.count, api_keys=keys, api_base=args.api_base, model=model,
+            output=args.output, workers=args.workers, batch_size=args.batch_size,
+            temperature=args.temperature, categories=categories,
+            distribution=distribution, difficulty=difficulty,
+            system_prompt=prompt, delay=args.delay,
         )
     except KeyboardInterrupt:
         print("\nDihentikan pengguna.")
