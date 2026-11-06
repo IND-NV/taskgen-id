@@ -23,7 +23,7 @@ def save_records(path, records):
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(records, handle, ensure_ascii=False, indent=2)
-            handle.write("\\n")
+            handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp_path, path)
