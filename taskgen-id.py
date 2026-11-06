@@ -34,7 +34,8 @@ def ask_api_keys():
     while True:
         key = getpass.getpass(f"API key {len(keys) + 1}: ").strip()
         if not key:
-            if keys: break
+            if keys:
+                break
             print("Masukkan minimal satu API key.")
             continue
         if key not in keys:
@@ -62,7 +63,8 @@ def choose_model(api_base, api_key, supplied=None):
             choice = input("Pilih model [1]: ").strip() or "1"
             if choice.lower() == "m":
                 manual = input("Nama model: ").strip()
-                if manual: return manual
+                if manual:
+                    return manual
             elif choice.isdigit() and 1 <= int(choice) <= len(models):
                 return models[int(choice) - 1]
             print("Pilihan tidak valid.")
@@ -80,20 +82,31 @@ def main():
         keys = ask_api_keys()
         args.model = choose_model(args.api_base, keys[0], args.model)
         try:
-            raw = input("Jumlah pertanyaan [10]: ").strip(); args.count = int(raw) if raw else 10
-            raw = input("Worker [1]: ").strip(); args.workers = int(raw) if raw else 1
-            raw = input("Batch per permintaan [2]: ").strip(); args.batch_size = int(raw) if raw else 2
+            raw = input("Jumlah pertanyaan [10]: ").strip()
+            args.count = int(raw) if raw else 10
+            raw = input("Worker [1]: ").strip()
+            args.workers = int(raw) if raw else 1
+            raw = input("Batch per permintaan [2]: ").strip()
+            args.batch_size = int(raw) if raw else 2
             labels = get_categories()
             print("\nKategori:")
-            for index, (key, value) in enumerate(labels.items(), 1): print(f"{index}. {value['name']}")
+            for index, (key, value) in enumerate(labels.items(), 1):
+                print(f"{index}. {value['name']}")
             print("0. Semua kategori")
             raw = input("Pilih nomor kategori dipisahkan koma [0]: ").strip()
             if raw and raw != "0":
                 ordered = list(labels)
-                args.categories = ",".join(ordered[int(x.strip()) - 1] for x in raw.split(",") if x.strip().isdigit() and 1 <= int(x.strip()) <= len(ordered))
-            raw = input("Nama berkas keluaran [output.json]: ").strip(); args.output = raw or "output.json"
+                args.categories = ",".join(
+                    ordered[int(item.strip()) - 1]
+                    for item in raw.split(",")
+                    if item.strip().isdigit() and 1 <= int(item.strip()) <= len(ordered)
+                )
+            raw = input("Nama berkas keluaran [output.json]: ").strip()
+            args.output = raw or "output.json"
         except (ValueError, EOFError, IndexError):
-            print("Masukan tidak valid."); return 2
+            print("Masukan tidak valid.")
+            return 2
+
     if not keys:
         keys = ask_api_keys()
     model = args.model or choose_model(args.api_base, keys[0])
@@ -101,18 +114,41 @@ def main():
     difficulty = parse_weights(args.difficulty, int) if args.difficulty else None
     prompt = None
     if args.system_prompt:
-        with open(args.system_prompt, encoding="utf-8") as handle: prompt = handle.read()
-    categories = [x.strip() for x in args.categories.split(",")] if args.categories else None
+        with open(args.system_prompt, encoding="utf-8") as handle:
+            prompt = handle.read()
+    categories = [item.strip() for item in args.categories.split(",")] if args.categories else None
+
     print(f"Model: {model} | jumlah key aktif: {len(keys)}")
     try:
-        stats = run_generation(count=args.count, api_keys=keys, api_base=args.api_base, model=model, output=args.output, workers=args.workers, batch_size=args.batch_size, temperature=args.temperature, categories=categories, distribution=distribution, difficulty=difficulty, system_prompt=prompt, delay=args.delay)
+        stats = run_generation(
+            count=args.count,
+            api_keys=keys,
+            api_base=args.api_base,
+            model=model,
+            output=args.output,
+            workers=args.workers,
+            batch_size=args.batch_size,
+            temperature=args.temperature,
+            categories=categories,
+            distribution=distribution,
+            difficulty=difficulty,
+            system_prompt=prompt,
+            delay=args.delay,
+        )
     except KeyboardInterrupt:
-        print("\nDihentikan pengguna."); return 130
+        print("\nDihentikan pengguna.")
+        return 130
     except Exception as exc:
-        print(f"[GAGAL] {exc}", file=sys.stderr); return 1
-    print(f"Selesai: {stats['done']} pertanyaan | galat: {stats['errors']} | token masuk/keluar: {stats['input_tokens']}/{stats['output_tokens']}")
+        print(f"[GAGAL] {exc}", file=sys.stderr)
+        return 1
+
+    print(
+        f"Selesai: {stats['done']} pertanyaan | galat: {stats['errors']} | "
+        f"token masuk/keluar: {stats['input_tokens']}/{stats['output_tokens']}"
+    )
     print(f"Hasil: {args.output}")
-    return 0
+    return 1 if stats["errors"] else 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
