@@ -45,6 +45,8 @@ def run_generation(count=250, api_key=None, api_keys=None, api_base=None, model=
 
     api_base = api_base or DEFAULT_API_BASE
     model = model or DEFAULT_MODEL
+    if not model:
+        raise ValueError("Nama model Gemini wajib diisi.")
     system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
     stats = {"done": 0, "input_tokens": 0, "output_tokens": 0, "errors": 0}
     total_batches = (count + batch_size - 1) // batch_size
@@ -76,18 +78,24 @@ def run_generation(count=250, api_key=None, api_keys=None, api_base=None, model=
                 break
 
         finished_batches = 0
+        stop_submitting = False
         while pending:
             completed, _ = concurrent.futures.wait(
                 pending, return_when=concurrent.futures.FIRST_COMPLETED
             )
             for future in completed:
                 specs = pending.pop(future)
+                if future.cancelled():
+                    continue
                 finished_batches += 1
                 try:
                     prompts, input_tokens, output_tokens = future.result()
                 except Exception as exc:
                     stats["errors"] += 1
                     progress(f"[GALAT] {exc}")
+                    stop_submitting = True
+                    for queued in pending:
+                        queued.cancel()
                 else:
                     for prompt, spec in zip(prompts, specs):
                         records.append(make_record(prompt, spec, next_id))
@@ -98,8 +106,9 @@ def run_generation(count=250, api_key=None, api_keys=None, api_base=None, model=
                     stats["output_tokens"] += output_tokens
                     progress(f"Progres: {stats['done']}/{count}")
 
-                if finished_batches < total_batches and delay:
+                if not stop_submitting and finished_batches < total_batches and delay:
                     time.sleep(delay)
-                submit_one()
+                if not stop_submitting:
+                    submit_one()
 
     return stats
