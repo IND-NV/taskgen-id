@@ -2,7 +2,7 @@
 
 CATEGORY = {
     "id": "conversation",
-    "name": "Conversation",
+    "name": "Percakapan",
     "domains": [
         {"name": "Debate", "subdomains": ["formal", "casual", "philosophical", "scientific", "political", "ethical"]},
         {"name": "Advice", "subdomains": ["career", "relationship", "academic", "financial", "health", "technical"]},
