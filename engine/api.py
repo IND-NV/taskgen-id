@@ -1,5 +1,6 @@
 """Lapisan generik pembuatan batch; detail penyedia berada di folder providers."""
 import json
+import threading
 import time
 from providers.registry import get_provider
 
@@ -13,10 +14,12 @@ class KeyRing:
         if not self.keys:
             raise ValueError("Minimal satu API key Gemini diperlukan.")
         self.index = 0
+        self.lock = threading.Lock()
 
     def next_keys(self):
-        start = self.index
-        self.index = (self.index + 1) % len(self.keys)
+        with self.lock:
+            start = self.index
+            self.index = (self.index + 1) % len(self.keys)
         return self.keys[start:] + self.keys[:start]
 
 
