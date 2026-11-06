@@ -40,15 +40,15 @@ def generate_batch(api_base, api_key, model, system_prompt, specs, temperature=0
     labels = {1:"Very Easy",2:"Easy",3:"Basic",4:"Intermediate",5:"Standard",6:"Skilled",7:"Proficient",8:"Advanced",9:"Expert",10:"Polymath"}
     for i, spec in enumerate(specs, 1):
         level = spec["difficulty_level"]
-        spec_lines.append(f"{i}. Main category: {spec['main_category']}\\n   Domain: {spec['domain']}\\n   Subdomain: {spec['subdomain']}\\n   Difficulty: {level}/10 ({labels[level]})")
-    user_prompt = (f"Generate exactly {len(specs)} distinct task prompts for these specifications:\\n" + "\\n".join(spec_lines) + "\\nAll prompts must be in Indonesian. Each must focus on its own subdomain and difficulty. Return ONLY a valid JSON array containing exactly that many strings.")
+        spec_lines.append(f"{i}. Main category: {spec['main_category']}\n   Domain: {spec['domain']}\n   Subdomain: {spec['subdomain']}\n   Difficulty: {level}/10 ({labels[level]})")
+    user_prompt = (f"Generate exactly {len(specs)} distinct task prompts for these specifications:\n" + "\n".join(spec_lines) + "\nAll prompts must be in Indonesian. Each must focus on its own subdomain and difficulty. Return ONLY a valid JSON array containing exactly that many strings.")
     messages = [{"role":"system","content":system_prompt},{"role":"user","content":user_prompt}]
     for attempt in range(retries + 1):
         try:
             content, input_tokens, output_tokens = chat_completion(api_base, api_key, model, messages, temperature)
             clean = content.strip()
             if clean.startswith("```"):
-                clean = clean.split("\\n", 1)[-1].rsplit("```", 1)[0].strip()
+                clean = clean.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
             prompts = json.loads(clean)
             if not isinstance(prompts, list) or len(prompts) != len(specs) or any(not isinstance(p, str) or not p.strip() for p in prompts):
                 raise APIError(f"Respons harus berupa array berisi {len(specs)} string tidak kosong.")
