@@ -4,10 +4,10 @@ CATEGORY = {
     "id": "conversation",
     "name": "Percakapan",
     "domains": [
-        {"name": "Debate", "subdomains": ["formal", "casual", "philosophical", "scientific", "political", "ethical"]},
-        {"name": "Advice", "subdomains": ["career", "relationship", "academic", "financial", "health", "technical"]},
-        {"name": "Interview", "subdomains": ["job", "podcast", "journalistic", "research", "behavioral", "technical_interview"]},
-        {"name": "Teaching", "subdomains": ["socratic", "mentoring", "tutoring", "lecture_qa", "feedback", "study_guidance"]},
-        {"name": "Roleplay", "subdomains": ["historical_figure", "professional", "customer_service", "therapy", "negotiation", "collaborative"]},
+        {"name": "Debat", "subdomains": ["formal", "santai", "filosofis", "ilmiah", "politik", "etika"]},
+        {"name": "Saran", "subdomains": ["karier", "hubungan", "akademik", "keuangan", "kesehatan", "teknis"]},
+        {"name": "Wawancara", "subdomains": ["pekerjaan", "podcast", "jurnalistik", "penelitian", "perilaku", "wawancara_teknis"]},
+        {"name": "Pengajaran", "subdomains": ["sokratik", "pendampingan", "bimbingan", "tanya_jawab_kuliah", "umpan_balik", "panduan_belajar"]},
+        {"name": "Bermain Peran", "subdomains": ["tokoh_sejarah", "profesional", "layanan_pelanggan", "terapeutik", "negosiasi", "kolaboratif"]},
     ],
 }
