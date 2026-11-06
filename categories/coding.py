@@ -2,7 +2,7 @@
 
 CATEGORY = {
     "id": "coding",
-    "name": "Coding",
+    "name": "Pemrograman",
     "domains": [
         {"name": "Web Development", "subdomains": ["html_css", "javascript", "react", "nodejs", "rest_apis", "databases", "authentication", "websockets"]},
         {"name": "C++", "subdomains": ["templates", "stl", "memory_management", "concurrency", "meta_programming", "algorithms"]},
