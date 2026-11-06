@@ -1,5 +1,6 @@
 """Orkestrasi generator dengan antrean terbatas dan penyimpanan per batch."""
 import concurrent.futures
+import time
 from .api import generate_batch, KeyRing
 from .sampler import build_domain_pool, sample_spec
 from .storage import load_records, save_records, make_record
@@ -46,6 +47,7 @@ def run_generation(count=250, api_key=None, api_keys=None, api_base=None, model=
     model = model or DEFAULT_MODEL
     system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
     stats = {"done": 0, "input_tokens": 0, "output_tokens": 0, "errors": 0}
+    total_batches = (count + batch_size - 1) // batch_size
 
     def batches():
         remaining = count
@@ -73,12 +75,14 @@ def run_generation(count=250, api_key=None, api_keys=None, api_base=None, model=
             if not submit_one():
                 break
 
+        finished_batches = 0
         while pending:
             completed, _ = concurrent.futures.wait(
                 pending, return_when=concurrent.futures.FIRST_COMPLETED
             )
             for future in completed:
                 specs = pending.pop(future)
+                finished_batches += 1
                 try:
                     prompts, input_tokens, output_tokens = future.result()
                 except Exception as exc:
@@ -94,8 +98,7 @@ def run_generation(count=250, api_key=None, api_keys=None, api_base=None, model=
                     stats["output_tokens"] += output_tokens
                     progress(f"Progres: {stats['done']}/{count}")
 
-                if delay and pending:
-                    import time
+                if finished_batches < total_batches and delay:
                     time.sleep(delay)
                 submit_one()
 
