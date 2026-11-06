@@ -2,7 +2,7 @@
 
 CATEGORY = {
     "id": "math",
-    "name": "Mathematics",
+    "name": "Matematika",
     "domains": [
         {"name": "Algebra", "subdomains": ["linear_equations", "polynomials", "inequalities", "matrices", "abstract_algebra"]},
         {"name": "Calculus", "subdomains": ["derivatives", "integrals", "limits", "series", "multivariable"]},

@@ -2,7 +2,7 @@
 
 CATEGORY = {
     "id": "cs",
-    "name": "Computer Science",
+    "name": "Ilmu Komputer",
     "domains": [
         {"name": "Algorithms", "subdomains": ["sorting", "searching", "dynamic_programming", "greedy", "divide_conquer", "graph_algorithms"]},
         {"name": "Data Structures", "subdomains": ["trees", "graphs", "hash_tables", "heaps", "tries", "bloom_filters"]},
