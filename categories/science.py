@@ -2,7 +2,7 @@
 
 CATEGORY = {
     "id": "science",
-    "name": "Science",
+    "name": "Sains",
     "domains": [
         {"name": "Physics", "subdomains": ["mechanics", "thermodynamics", "electromagnetism", "quantum", "relativity", "optics", "fluid_dynamics"]},
         {"name": "Chemistry", "subdomains": ["organic", "inorganic", "physical", "analytical", "biochemistry", "electrochemistry"]},
