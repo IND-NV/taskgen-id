@@ -1,6 +1,5 @@
-"""Orkestrasi generator; hasil ditulis setiap batch selesai."""
+"""Orkestrasi generator dengan antrean terbatas dan penyimpanan per batch."""
 import concurrent.futures
-import threading
 from .api import generate_batch, KeyRing
 from .sampler import build_domain_pool, sample_spec
 from .storage import load_records, save_records, make_record
@@ -25,47 +24,79 @@ def run_generation(count=250, api_key=None, api_keys=None, api_base=None, model=
     keyring = KeyRing(keys)
     if count < 1 or batch_size < 1 or workers < 1:
         raise ValueError("Jumlah data, batch, dan worker harus lebih besar dari nol.")
+
     dist = distribution or dict(DEFAULT_DISTRIBUTION)
     if categories:
-        dist = {k: v for k, v in dist.items() if k in categories}
-        if not dist: raise ValueError("Tidak ada kategori valid yang dipilih.")
-        total = sum(dist.values()); dist = {k:v/total for k,v in dist.items()}
-    diff = difficulty or DEFAULT_DIFFICULTY
+        dist = {key: value for key, value in dist.items() if key in categories}
+        if not dist:
+            raise ValueError("Tidak ada kategori valid yang dipilih.")
+        total = sum(dist.values())
+        dist = {key: value / total for key, value in dist.items()}
+
     pool = build_domain_pool(dist)
+    diff = difficulty or DEFAULT_DIFFICULTY
     records = load_records(output)
-    next_id = max((int(r.get("id", "0")) for r in records if str(r.get("id", "0")).isdigit()), default=0) + 1
-    lock = threading.Lock()
-    stop = threading.Event()
-    stats = {"done":0,"input_tokens":0,"output_tokens":0,"errors":0}
-    batches = []
-    remaining = count
-    while remaining:
-        size = min(batch_size, remaining)
-        batches.append([sample_spec(pool, diff) for _ in range(size)])
-        remaining -= size
-    def task(specs):
-        if stop.is_set(): return None
-        try:
-            prompts, in_tokens, out_tokens = generate_batch(api_base or DEFAULT_API_BASE, keyring, model or DEFAULT_MODEL, system_prompt or DEFAULT_SYSTEM_PROMPT, specs, temperature)
-            with lock:
-                nonlocal next_id
-                for prompt, spec in zip(prompts, specs):
-                    records.append(make_record(prompt, spec, next_id)); next_id += 1
-                    stats["done"] += 1
-                    save_records(output, records)
-                stats["input_tokens"] += in_tokens; stats["output_tokens"] += out_tokens
-                progress(f"Progres: {stats['done']}/{count}")
-            if delay:
-                import time
-                time.sleep(delay)
-            return True
-        except Exception as exc:
-            with lock:
-                stats["errors"] += 1
-                progress(f"[GALAT] {exc}")
-            return False
+    next_id = max(
+        (int(record.get("id", "0")) for record in records
+         if str(record.get("id", "0")).isdigit()),
+        default=0,
+    ) + 1
+
+    api_base = api_base or DEFAULT_API_BASE
+    model = model or DEFAULT_MODEL
+    system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
+    stats = {"done": 0, "input_tokens": 0, "output_tokens": 0, "errors": 0}
+
+    def batches():
+        remaining = count
+        while remaining:
+            size = min(batch_size, remaining)
+            yield [sample_spec(pool, diff) for _ in range(size)]
+            remaining -= size
+
+    batch_iterator = iter(batches())
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [executor.submit(task, specs) for specs in batches]
-        for future in concurrent.futures.as_completed(futures):
-            future.result()
+        pending = {}
+
+        def submit_one():
+            try:
+                specs = next(batch_iterator)
+            except StopIteration:
+                return False
+            future = executor.submit(
+                generate_batch, api_base, keyring, model, system_prompt, specs, temperature
+            )
+            pending[future] = specs
+            return True
+
+        for _ in range(workers):
+            if not submit_one():
+                break
+
+        while pending:
+            completed, _ = concurrent.futures.wait(
+                pending, return_when=concurrent.futures.FIRST_COMPLETED
+            )
+            for future in completed:
+                specs = pending.pop(future)
+                try:
+                    prompts, input_tokens, output_tokens = future.result()
+                except Exception as exc:
+                    stats["errors"] += 1
+                    progress(f"[GALAT] {exc}")
+                else:
+                    for prompt, spec in zip(prompts, specs):
+                        records.append(make_record(prompt, spec, next_id))
+                        next_id += 1
+                    save_records(output, records)
+                    stats["done"] += len(prompts)
+                    stats["input_tokens"] += input_tokens
+                    stats["output_tokens"] += output_tokens
+                    progress(f"Progres: {stats['done']}/{count}")
+
+                if delay and pending:
+                    import time
+                    time.sleep(delay)
+                submit_one()
+
     return stats
