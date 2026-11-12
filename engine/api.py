@@ -42,9 +42,9 @@ def generate_batch(api_base, keyring, model, system_prompt, specs, temperature=0
     user_prompt = (
         f"Buat tepat {len(specs)} pesan pengguna yang berbeda berdasarkan spesifikasi berikut:\n"
         + "\n".join(spec_lines)
-        + "\nWAJIB: seluruh pesan harus sepenuhnya menggunakan bahasa Indonesia, bukan campuran "
-          "Indonesia-Inggris. Jangan menyalin label kategori atau bidang yang berbahasa Inggris "
-          "ke dalam pesan; pahami maknanya dan tulis secara alami dalam bahasa Indonesia. "
+        + "\nUtamakan bahasa Indonesia yang alami. Istilah, frasa, nama produk, bahasa pemrograman, "
+          "dan ungkapan bahasa Inggris atau bahasa lain boleh digunakan jika sesuai konteks; "
+          "jangan memaksakan terjemahan yang tidak alami. "
           "Keluarkan HANYA larik JSON valid berisi tepat jumlah pesan tersebut, tanpa teks tambahan."
     )
     messages = [
