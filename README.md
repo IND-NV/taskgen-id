@@ -64,7 +64,7 @@ Buat modul baru di `categories/` dengan variabel `CATEGORY`, lalu daftarkan di `
 
 ## Bahasa keluaran dan metadata
 
-Isi pertanyaan dan nilai metadata kategori/domain/subdomain menggunakan bahasa Indonesia. Nama produk, bahasa pemrograman, protokol, singkatan baku, serta istilah teknis yang tidak memiliki padanan wajar boleh tetap dalam bentuk aslinya. Nama kolom JSON tetap menggunakan bahasa Inggris agar skema dataset stabil.
+Utamakan bahasa Indonesia yang alami untuk isi pertanyaan dan metadata kategori/domain/subdomain. Istilah, frasa, nama produk, bahasa pemrograman, protokol, singkatan baku, atau ungkapan bahasa Inggris maupun bahasa lain boleh digunakan jika sesuai konteks; tidak perlu memaksakan terjemahan.
 
 ## Fitur
 
@@ -80,7 +80,7 @@ Isi pertanyaan dan nilai metadata kategori/domain/subdomain menggunakan bahasa I
 
 ## Format keluaran
 
-JSON array dengan tujuh field: `question`, `language`, `main_category`, `domain`, `subdomain`, `difficulty_level`, dan `id`. Nilai `main_category`, `domain`, dan `subdomain` menggunakan label Indonesia.
+JSON array dengan enam field: `question`, `language`, `main_category`, `domain`, `subdomain`, dan `id`. Tingkat kesulitan tetap dipakai secara internal untuk mengarahkan variasi tugas, tetapi tidak disimpan sebagai kolom dataset. Nilai `main_category`, `domain`, dan `subdomain` menggunakan label Indonesia.
 
 ## Catatan
 
