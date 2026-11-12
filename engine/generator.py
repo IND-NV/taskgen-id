@@ -19,7 +19,7 @@ def parse_weights(value, cast_key=str):
     return {k: v / total for k, v in result.items()}
 
 
-def run_generation(count=250, api_key=None, api_keys=None, api_base=None, model=None, output="output.json", workers=1, batch_size=2, temperature=.9, categories=None, distribution=None, difficulty=None, system_prompt=None, delay=3, progress=print):
+def run_generation(count=250, api_key=None, api_keys=None, api_base=None, model=None, output="output.json", workers=1, batch_size=2, temperature=.9, categories=None, distribution=None, system_prompt=None, delay=3, progress=print):
     from .config import DEFAULT_API_BASE, DEFAULT_MODEL, DEFAULT_SYSTEM_PROMPT
     keys = api_keys or ([api_key] if api_key else [])
     keyring = KeyRing(keys)
@@ -35,7 +35,6 @@ def run_generation(count=250, api_key=None, api_keys=None, api_base=None, model=
         dist = {key: value / total for key, value in dist.items()}
 
     pool = build_domain_pool(dist)
-    diff = difficulty or DEFAULT_DIFFICULTY
     records = load_records(output)
     next_id = max(
         (int(record.get("id", "0")) for record in records
@@ -55,7 +54,7 @@ def run_generation(count=250, api_key=None, api_keys=None, api_base=None, model=
         remaining = count
         while remaining:
             size = min(batch_size, remaining)
-            yield [sample_spec(pool, diff) for _ in range(size)]
+            yield [sample_spec(pool) for _ in range(size)]
             remaining -= size
 
     batch_iterator = iter(batches())
