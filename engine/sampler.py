@@ -24,8 +24,8 @@ def build_domain_pool(distribution=None):
     return pool
 
 
-def sample_spec(pool, difficulty=None):
-    difficulty = difficulty or DEFAULT_DIFFICULTY
+def sample_spec(pool):
+    difficulty = DEFAULT_DIFFICULTY
     category, domain, subdomain, _ = _weighted_choice(
         pool, [item[3] for item in pool]
     )
