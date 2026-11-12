@@ -29,7 +29,8 @@ class CategoryTests(unittest.TestCase):
     def test_output_schema(self):
         spec = {"main_category": "Matematika", "domain": "Aljabar", "subdomain": "persamaan_linear", "difficulty_level": 2}
         record = make_record("Contoh pertanyaan", spec, 1)
-        self.assertEqual(list(record), ["question", "language", "main_category", "domain", "subdomain", "difficulty_level", "id"])
+        self.assertEqual(list(record), ["question", "language", "main_category", "domain", "subdomain", "id"])
+        self.assertNotIn("difficulty_level", record)
         self.assertEqual(record["main_category"], "Matematika")
         self.assertEqual(record["id"], "000001")
 
@@ -48,7 +49,9 @@ class CategoryTests(unittest.TestCase):
             save_records(path, [record])
             with open(path, encoding="utf-8") as handle:
                 self.assertTrue(handle.read().endswith("\n"))
-            self.assertEqual(load_records(path), [record])
+            loaded = load_records(path)
+            self.assertEqual(loaded[0], {key: value for key, value in record.items() if key != "difficulty_level"})
+            self.assertNotIn("difficulty_level", loaded[0])
             with open(path, encoding="utf-8") as handle:
                 json.load(handle)
 
