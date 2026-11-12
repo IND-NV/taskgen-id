@@ -16,7 +16,7 @@ cd taskgen-id
 python taskgen-id.py
 ```
 
-Saat dijalankan tanpa argumen, program akan meminta satu atau beberapa API key Gemini, mengambil daftar model, lalu meminta pilihan model, jumlah data, worker, batch, kategori, dan nama berkas keluaran. API key hanya disimpan di memori selama sesi aktif dan tidak ditulis ke berkas.
+Saat dijalankan tanpa argumen, program akan meminta satu atau beberapa API key Gemini, mengambil daftar model, lalu meminta pilihan model, jumlah data, worker, batch, kategori, dan nama berkas keluaran. Tingkat kesulitan, domain, dan subdomain dipilih otomatis secara acak sebagai konteks generasi; pengguna tidak perlu memilih level. API key hanya disimpan di memori selama sesi aktif dan tidak ditulis ke berkas.
 
 Jika satu key terkena batas kuota atau pembatasan permintaan, program mencoba key lain yang dimasukkan pada sesi yang sama. Data yang sudah berhasil dibuat tetap tersimpan.
 
@@ -75,12 +75,12 @@ Utamakan bahasa Indonesia yang alami untuk isi pertanyaan dan metadata kategori/
 - Batch kecil dan worker yang dapat diatur; gunakan 1 worker dan batch 2 di ponsel.
 - Penyimpanan JSON atomik setelah setiap batch berhasil.
 - ID berurutan enam digit.
-- Distribusi kategori dan tingkat kesulitan yang dapat diatur.
+- Distribusi kategori dapat diatur; domain, subdomain, dan tingkat kesulitan dipilih otomatis secara acak.
 - Prompt sistem dapat diganti dari berkas.
 
 ## Format keluaran
 
-JSON array dengan enam field: `question`, `language`, `main_category`, `domain`, `subdomain`, dan `id`. Tingkat kesulitan tetap dipakai secara internal untuk mengarahkan variasi tugas, tetapi tidak disimpan sebagai kolom dataset. Nilai `main_category`, `domain`, dan `subdomain` menggunakan label Indonesia.
+JSON array dengan empat field: `question`, `language`, `main_category`, dan `id`. Domain, subdomain, serta tingkat kesulitan hanya digunakan sebagai konteks internal untuk mengarahkan variasi generasi dan tidak disimpan di dataset. Nilai `main_category` menggunakan label Indonesia.
 
 ## Catatan
 
