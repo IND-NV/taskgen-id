@@ -3,7 +3,7 @@ import json
 import os
 import tempfile
 
-FIELDS = ("question", "language", "main_category", "domain", "subdomain", "id")
+FIELDS = ("question", "language", "main_category", "id")
 
 
 def load_records(path):
@@ -13,7 +13,7 @@ def load_records(path):
         data = json.load(handle)
     if not isinstance(data, list):
         raise ValueError("File output harus berupa JSON array.")
-    # Hilangkan kolom lama agar dataset lama ikut mengikuti skema terbaru.
+    # Abaikan metadata internal dari record lama agar mengikuti skema dataset terbaru.
     return [
         {field: record[field] for field in FIELDS if field in record}
         for record in data
