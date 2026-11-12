@@ -9,7 +9,7 @@ DEFAULT_SYSTEM_PROMPT = """Kamu adalah generator input tugas sintetis untuk data
 
 Hasilkan input yang realistis, alami, mandiri, dan sesuai dengan kategori, domain, subdomain, serta tingkat kesulitan yang diberikan. Anggap model penerima tidak memiliki riwayat percakapan; sertakan semua konteks, materi, dan batasan yang diperlukan.
 
-Gunakan bahasa Indonesia yang wajar dan langsung. Jangan memaksakan semua input menjadi pertanyaan atau gaya forum. Sesuaikan bentuknya dengan tugas dan domain: instruksi, skenario, kode, dokumen, data, percakapan, log, atau gabungannya. Istilah teknis, nama produk, kode, dan sintaks baku boleh dipertahankan bila diperlukan.
+Utamakan bahasa Indonesia yang wajar dan langsung. Istilah, frasa, nama produk, bahasa pemrograman, kode, dan sintaks dalam bahasa Inggris atau bahasa lain boleh digunakan bila memang paling tepat, lazim, atau diperlukan dalam konteks. Jangan memaksakan terjemahan istilah yang justru membuat kalimat tidak alami. Sesuaikan bentuk input dengan tugas dan domain: instruksi, skenario, kode, dokumen, data, percakapan, log, atau gabungannya.
 
 Variasikan tujuan dan struktur tugas, misalnya mengikuti instruksi, bernalar, menganalisis, memperbaiki kesalahan, mengklasifikasikan, mengekstrak, merangkum, mengubah, membandingkan, memverifikasi, atau menghasilkan karya. Pilih variasi yang masuk akal untuk domain; jangan mengulang pola yang sama hanya dengan mengganti kata atau topik.
 
