@@ -62,9 +62,9 @@ Setiap penyedia ditempatkan pada berkas terpisah di `providers/`. Saat ini hanya
 
 Buat modul baru di `categories/` dengan variabel `CATEGORY`, lalu daftarkan di `categories/registry.py`. ID internal seperti `math` dan `coding` sengaja dipertahankan agar konfigurasi dan CLI tetap stabil. Nama kategori, domain, dan subdomain yang masuk ke dataset menggunakan bahasa Indonesia.
 
-## Bahasa keluaran dan metadata
+## Bahasa keluaran dan kategori
 
-Utamakan bahasa Indonesia yang alami untuk isi pertanyaan dan metadata kategori/domain/subdomain. Istilah, frasa, nama produk, bahasa pemrograman, protokol, singkatan baku, atau ungkapan bahasa Inggris maupun bahasa lain boleh digunakan jika sesuai konteks; tidak perlu memaksakan terjemahan.
+Utamakan bahasa Indonesia yang alami untuk isi pertanyaan. Istilah, frasa, nama produk, bahasa pemrograman, protokol, singkatan baku, atau ungkapan bahasa Inggris maupun bahasa lain boleh digunakan jika sesuai konteks; tidak perlu memaksakan terjemahan. `main_category` disimpan menggunakan label Indonesia, sedangkan domain dan subdomain hanya menjadi konteks internal generasi.
 
 ## Fitur
 
