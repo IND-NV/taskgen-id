@@ -21,7 +21,6 @@ def build_parser():
     parser.add_argument("-t", "--temperature", type=float, default=.9)
     parser.add_argument("--categories", help="ID kategori dipisahkan koma, misalnya math,coding")
     parser.add_argument("--distribution", help="Bobot kategori: math=0.5,coding=0.5")
-    parser.add_argument("--difficulty", help="Bobot tingkat: 1=0.1,2=0.2,...")
     parser.add_argument("--system-prompt", help="Berkas instruksi khusus")
     parser.add_argument("--delay", type=float, default=3, help="Jeda antarbatch")
     return parser
@@ -113,7 +112,6 @@ def main():
         keys = ask_api_keys()
     model = args.model or choose_model(args.api_base, keys[0])
     distribution = parse_weights(args.distribution) if args.distribution else None
-    difficulty = parse_weights(args.difficulty, int) if args.difficulty else None
     prompt = None
     if args.system_prompt:
         with open(args.system_prompt, encoding="utf-8") as handle:
@@ -126,7 +124,7 @@ def main():
             count=args.count, api_keys=keys, api_base=args.api_base, model=model,
             output=args.output, workers=args.workers, batch_size=args.batch_size,
             temperature=args.temperature, categories=categories,
-            distribution=distribution, difficulty=difficulty,
+            distribution=distribution,
             system_prompt=prompt, delay=args.delay,
         )
     except KeyboardInterrupt:
