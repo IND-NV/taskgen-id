@@ -5,7 +5,6 @@ from .api import generate_batch, KeyRing
 from .sampler import build_domain_pool, sample_spec
 from .storage import load_records, save_records, make_record
 from categories.registry import DEFAULT_DISTRIBUTION
-from .config import DEFAULT_DIFFICULTY
 
 
 def parse_weights(value, cast_key=str):
