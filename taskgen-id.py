@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """TaskGen-ID — CLI interaktif, tanpa dependensi pihak ketiga."""
 import argparse
-import getpass
 import sys
 from categories.registry import get_categories
 from engine.config import DEFAULT_API_BASE, DEFAULT_MODEL, DEFAULT_WORKERS
@@ -30,7 +29,7 @@ def ask_api_keys():
     keys = []
     print("\nMasukkan API key Gemini. Kosongkan untuk selesai.")
     while True:
-        key = getpass.getpass(f"API key {len(keys) + 1}: ").strip()
+        key = input(f"API key {len(keys) + 1}: ").strip()
         if not key:
             if keys:
                 break
